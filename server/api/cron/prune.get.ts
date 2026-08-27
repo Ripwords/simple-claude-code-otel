@@ -36,5 +36,16 @@ export default defineEventHandler(async (event) => {
     []
   )
 
-  return { metricPoints, events: noisyEvents + agedEvents, sessions }
+  // A device row outlives its telemetry so a machine keeps its name while data ages out. Once every
+  // fact for it is gone and it is older than the retention window, the machine is retired.
+  const devices = await deleteCount(
+    'delete from telemetry.device d'
+    + ' where d.first_seen < now() - make_interval(days => $1::int)'
+    + ' and not exists (select 1 from telemetry.session s where s.device = d.device)'
+    + ' and not exists (select 1 from telemetry.metric_point m where m.device = d.device)'
+    + ' and not exists (select 1 from telemetry.event e where e.device = d.device)',
+    [retentionDays]
+  )
+
+  return { metricPoints, events: noisyEvents + agedEvents, sessions, devices }
 })
