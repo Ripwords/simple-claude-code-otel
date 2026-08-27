@@ -39,7 +39,9 @@ export function fixtureDevices(): DeviceInfo[] {
       firstSeen: '2026-06-02T09:14:00.000Z',
       lastSeen: '2026-08-27T08:51:00.000Z',
       revokedAt: null,
-      sessions: 412
+      sessions: 412,
+      account: { uuid: 'a1f0c7d2-3b46-4e58-9c01-7d2e4f6a8b30', email: 'you@example.com' },
+      conflict: null
     },
     {
       id: PERSONAL,
@@ -50,7 +52,9 @@ export function fixtureDevices(): DeviceInfo[] {
       firstSeen: '2026-08-26T19:02:00.000Z',
       lastSeen: '2026-08-26T23:40:00.000Z',
       revokedAt: null,
-      sessions: 12
+      sessions: 12,
+      account: { uuid: 'a1f0c7d2-3b46-4e58-9c01-7d2e4f6a8b30', email: 'you@example.com' },
+      conflict: { uuid: 'f7b31d90-6c25-4a17-8e43-05b9c1d7e264', at: '2026-08-27T06:12:00.000Z', count: 14 }
     },
     {
       id: PENDING,
@@ -61,7 +65,9 @@ export function fixtureDevices(): DeviceInfo[] {
       firstSeen: null,
       lastSeen: null,
       revokedAt: null,
-      sessions: 0
+      sessions: 0,
+      account: null,
+      conflict: null
     },
     {
       id: REVOKED,
@@ -72,7 +78,9 @@ export function fixtureDevices(): DeviceInfo[] {
       firstSeen: '2026-03-11T10:33:00.000Z',
       lastSeen: '2026-07-19T16:04:00.000Z',
       revokedAt: '2026-07-20T09:12:00.000Z',
-      sessions: 87
+      sessions: 87,
+      account: { uuid: 'c9d21e84-7f30-4b62-a5d8-1e40b7c93f52', email: null },
+      conflict: null
     }
   ]
 }

@@ -1,12 +1,13 @@
-import type { DeviceInfo, DeviceStatus } from '#shared/types'
+import type { DeviceAccount, DeviceInfo, DeviceStatus } from '#shared/types'
 
-export const DEVICE_ACTIONS = ['rename', 'rotate', 'revoke', 'delete'] as const
+export const DEVICE_ACTIONS = ['rename', 'rotate', 'revoke', 'release', 'delete'] as const
 export type DeviceAction = (typeof DEVICE_ACTIONS)[number]
 
 export const ACTION: Record<DeviceAction, { label: string, aria: (name: string) => string }> = {
   rename: { label: 'Rename', aria: n => `Rename ${n}` },
   rotate: { label: 'Rotate', aria: n => `Rotate token for ${n}` },
   revoke: { label: 'Revoke', aria: n => `Revoke token for ${n}` },
+  release: { label: 'Release', aria: n => `Release the account binding on ${n}` },
   delete: { label: 'Delete', aria: n => `Delete ${n} and all of its history` }
 }
 
@@ -69,7 +70,7 @@ export interface RowPane {
 
 export type PanelResult
   = | { action: 'rename', name: string }
-    | { action: 'rotate' | 'revoke' | 'delete' }
+    | { action: 'rotate' | 'revoke' | 'release' | 'delete' }
 
 export const DEVICE_NAME_MAX = 64
 
@@ -103,4 +104,39 @@ export function humaniseCount(key: string): string {
     .toLowerCase()
     .trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** Enough of an account uuid to tell two apart without pretending it is readable. */
+export function shortAccountId(uuid: string): string {
+  return uuid.slice(0, 8)
+}
+
+/**
+ * An account has an email only when the machine reported one. The uuid is the
+ * identity either way, so it stands in rather than leaving the field blank.
+ */
+export function accountLabel(account: DeviceAccount): string {
+  return account.email ?? shortAccountId(account.uuid)
+}
+
+/**
+ * Binding is orthogonal to lifecycle: a reporting machine can be refusing a
+ * second account, and a revoked one can still hold the claim it made. Deriving
+ * one union from the two nullable fields keeps that out of every template.
+ */
+export type Binding = 'unclaimed' | 'bound' | 'refusing'
+
+export function bindingOf(device: DeviceInfo): Binding {
+  if (device.conflict) return 'refusing'
+  return device.account ? 'bound' : 'unclaimed'
+}
+
+/**
+ * Release only exists once there is a claim to give up, so it is derived here
+ * rather than listed per lifecycle state, which does not determine it.
+ */
+export function actionsFor(device: DeviceInfo): DeviceAction[] {
+  const actions = STATUS[device.status].actions
+  if (bindingOf(device) === 'unclaimed') return [...actions]
+  return actions.flatMap<DeviceAction>(action => action === 'delete' ? ['release', 'delete'] : [action])
 }

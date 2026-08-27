@@ -100,7 +100,9 @@ export function useDevices() {
         firstSeen: null,
         lastSeen: null,
         revokedAt: null,
-        sessions: 0
+        sessions: 0,
+        account: null,
+        conflict: null
       }
       roster.value = [...(roster.value ?? []), device]
       return { device, token }
@@ -152,6 +154,19 @@ export function useDevices() {
     return updated
   }
 
+  async function release(id: string): Promise<DeviceInfo> {
+    if (fixture.value !== 'off') {
+      const current = (roster.value ?? []).find(entry => entry.id === id)!
+      const updated: DeviceInfo = { ...current, account: null, conflict: null }
+      replace(updated)
+      return updated
+    }
+
+    const updated = await $fetch<DeviceInfo>(`/api/devices/${id}/release`, { method: 'POST' })
+    replace(updated)
+    return updated
+  }
+
   async function destroy(id: string): Promise<DeviceCascade> {
     if (fixture.value !== 'off') {
       const current = (roster.value ?? []).find(entry => entry.id === id)!
@@ -164,5 +179,5 @@ export function useDevices() {
     return cascade(result)
   }
 
-  return { ...query, unavailable, create, rename, rotate, revoke, destroy }
+  return { ...query, unavailable, create, rename, rotate, revoke, release, destroy }
 }
