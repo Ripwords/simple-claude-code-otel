@@ -19,12 +19,6 @@ export const EVENTS = {
 
 export type Bucket = 'hour' | 'day'
 
-export interface RangeQuery {
-  from: string
-  to: string
-  devices?: string[]
-}
-
 export interface DeviceSummary {
   device: string
   costUsd: number
@@ -63,4 +57,9 @@ export interface DeviceInfo {
   firstSeen: string
   lastSeen: string
   sessions: number
+  acknowledgedAt: string | null
+  isNew: boolean
+  isUnlabelled: boolean
 }
+
+export const UNLABELLED_DEVICE = 'unknown'

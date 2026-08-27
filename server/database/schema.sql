@@ -44,3 +44,9 @@ create index if not exists event_ts_brin_idx
   on telemetry.event using brin (ts) with (pages_per_range = 32);
 create index if not exists event_attrs_gin_idx
   on telemetry.event using gin (attrs jsonb_path_ops);
+
+create table if not exists telemetry.device (
+  device          text        primary key,
+  first_seen      timestamptz not null,
+  acknowledged_at timestamptz
+);
