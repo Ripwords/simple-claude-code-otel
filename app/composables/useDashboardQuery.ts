@@ -47,10 +47,11 @@ export function useDashboardQuery() {
     return { from: start.toISOString(), to: end.toISOString() }
   })
 
+  // The API takes `devices` as one comma-joined string, not repeated params.
   const rangeQuery = computed(() => ({
     from: range.value.from,
     to: range.value.to,
-    ...(selectedDevices.value.length > 0 ? { devices: selectedDevices.value } : {})
+    ...(selectedDevices.value.length > 0 ? { devices: selectedDevices.value.join(',') } : {})
   }))
 
   function setPreset(id: RangePresetId) {

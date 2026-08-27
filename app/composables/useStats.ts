@@ -2,10 +2,14 @@ import type { Bucket, BreakdownRow, DeviceInfo, DeviceSummary, MetricKey, Series
 
 export type BreakdownDimension = 'model' | 'toolName' | 'tokenType' | 'editDecision' | 'errorStatus'
 
+function splitDevices(raw: string | undefined): string[] {
+  return raw ? raw.split(',').filter(Boolean) : []
+}
+
 export interface RangeParams {
   from: string
   to: string
-  devices?: string[]
+  devices?: string
 }
 
 type FixtureMode = 'off' | 'data' | 'empty'
@@ -37,7 +41,7 @@ export function useSummary(params: Ref<RangeParams>) {
     'stats:summary',
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
-      if (fixture.value === 'data') return Promise.resolve(fixtureSummary(params.value.devices ?? []))
+      if (fixture.value === 'data') return Promise.resolve(fixtureSummary(splitDevices(params.value.devices)))
       return $fetch<DeviceSummary[]>('/api/stats/summary', { query: params.value })
     },
     { default: () => [], watch: [params, fixture] }
@@ -50,7 +54,7 @@ export function useTimeseries(params: Ref<RangeParams>, metric: MetricKey, bucke
     `stats:timeseries:${metric}`,
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
-      if (fixture.value === 'data') return Promise.resolve(fixtureTimeseries(params.value.devices ?? [], metric, bucket.value))
+      if (fixture.value === 'data') return Promise.resolve(fixtureTimeseries(splitDevices(params.value.devices), metric, bucket.value))
       return $fetch<SeriesPoint[]>('/api/stats/timeseries', { query: { ...params.value, metric, bucket: bucket.value } })
     },
     { default: () => [], watch: [params, bucket, fixture] }
@@ -63,7 +67,7 @@ export function useBreakdown(params: Ref<RangeParams>, by: BreakdownDimension) {
     `stats:breakdown:${by}`,
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
-      if (fixture.value === 'data') return Promise.resolve(fixtureBreakdown(params.value.devices ?? [], by))
+      if (fixture.value === 'data') return Promise.resolve(fixtureBreakdown(splitDevices(params.value.devices), by))
       return $fetch<BreakdownRow[]>('/api/stats/breakdown', { query: { ...params.value, by } })
     },
     { default: () => [], watch: [params, fixture] }
