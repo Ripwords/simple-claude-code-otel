@@ -26,6 +26,10 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'vercel',
     vercel: {
+      // Singapore, because the Neon database is in ap-southeast-1. Every dashboard
+      // query is a round trip to it, so colocating the functions is the difference
+      // between one hop and a Pacific crossing per query.
+      functions: { regions: ['sin1'] },
       config: {
         crons: [{ path: '/api/cron/prune', schedule: '0 4 * * *' }]
       }
