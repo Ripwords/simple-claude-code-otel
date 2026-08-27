@@ -7,45 +7,91 @@ defineProps<Props>()
 </script>
 
 <template>
-  <UCard>
-    <div
-      v-if="pending"
-      class="flex items-center gap-3"
-    >
-      <UIcon
-        name="i-lucide-loader-circle"
-        class="size-5 animate-spin"
-      />
-      <span :style="{ color: 'var(--viz-ink-secondary)' }">Looking for telemetry...</span>
-    </div>
+  <div
+    v-if="pending"
+    class="waiting viz-mono"
+  >
+    Looking for telemetry…
+  </div>
 
-    <div
-      v-else
-      class="max-w-2xl space-y-4"
-    >
-      <h2
-        class="text-lg font-semibold"
-        :style="{ color: 'var(--viz-ink)' }"
-      >
-        No telemetry yet
-      </h2>
+  <div
+    v-else
+    class="empty"
+  >
+    <p class="viz-eyebrow">
+      Nothing reporting yet
+    </p>
 
-      <p :style="{ color: 'var(--viz-ink-secondary)' }">
-        Nothing has been sent to this dashboard so far. Claude Code does not report anything
-        until you point it here, and you have to do that once on every machine you use.
-      </p>
+    <h2 class="headline">
+      Point a machine at this dashboard and it appears here
+    </h2>
 
-      <p :style="{ color: 'var(--viz-ink-secondary)' }">
-        On each machine, open <code>~/.claude/settings.json</code> and add an <code>env</code> block
-        with this dashboard's endpoint, your ingest token, and
-        <code>OTEL_RESOURCE_ATTRIBUTES=device.name=...</code>. Give every machine a different
-        name there, because that name is what tells your laptops apart on every screen here.
-      </p>
+    <ol class="steps">
+      <li class="viz-prose">
+        On the machine you want to track, run
+        <span class="viz-code">scripts/setup-device.sh --device &lt;name&gt;</span>.
+        The name is what tells your machines apart on every screen here, so give each one
+        its own.
+      </li>
+      <li class="viz-prose">
+        Start Claude Code and work for a minute. Telemetry is batched, so the first numbers
+        take a moment.
+      </li>
+      <li class="viz-prose">
+        Repeat on your second machine. Two machines is when this page earns its keep: it is
+        built to show you the gap between them.
+      </li>
+    </ol>
 
-      <p :style="{ color: 'var(--viz-ink-secondary)' }">
-        The exact block to copy is in README.md in the repo root. Once one machine has sent
-        anything, this page fills in on its own.
-      </p>
-    </div>
-  </UCard>
+    <p class="viz-prose">
+      The setup script writes <span class="viz-code">~/.claude/settings.json</span>. The exact
+      block it writes, and how to write it by hand, is in <span class="viz-code">README.md</span>.
+    </p>
+  </div>
 </template>
+
+<style scoped>
+.waiting {
+  padding: 40px 0;
+  font-size: 13px;
+  color: var(--viz-muted);
+}
+
+.empty {
+  padding: 28px 0 8px;
+  max-width: 62ch;
+}
+
+.headline {
+  margin: 10px 0 22px;
+  font-size: clamp(1.25rem, 3.4vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--viz-ink);
+}
+
+.steps {
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  position: relative;
+  counter-increment: step;
+  padding: 14px 0 14px 34px;
+  border-top: 1px solid var(--viz-grid);
+}
+
+.steps li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 15px;
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--viz-muted);
+}
+</style>

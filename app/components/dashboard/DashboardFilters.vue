@@ -13,39 +13,42 @@ const selection = computed({
 })
 
 const selectionLabel = computed(() => {
-  if (selection.value.length === 0) return 'All devices'
+  if (selection.value.length === 0) return `All ${deviceNames.value.length} machines`
   if (selection.value.length === 1) return selection.value[0]!
-  return `${selection.value.length} devices`
+  return `${selection.value.length} machines`
 })
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-3">
-    <UFieldGroup
+  <div class="filters">
+    <div
+      class="range"
       role="group"
       aria-label="Date range"
     >
-      <UButton
+      <button
         v-for="option in RANGE_PRESETS"
         :key="option.id"
-        :label="option.label"
-        color="neutral"
-        :variant="option.id === preset.id ? 'solid' : 'outline'"
+        type="button"
+        class="range-option viz-mono viz-focus"
+        :class="{ 'is-active': option.id === preset.id }"
         :aria-pressed="option.id === preset.id"
         @click="setPreset(option.id)"
-      />
-    </UFieldGroup>
+      >
+        {{ option.label }}
+      </button>
+    </div>
 
     <USelectMenu
       v-model="selection"
       multiple
       :items="deviceNames"
-      :search-input="{ placeholder: 'Filter devices' }"
+      :search-input="{ placeholder: 'Filter machines' }"
       :ui="{ content: 'viz-root' }"
       color="neutral"
-      variant="outline"
-      class="min-w-52"
-      aria-label="Devices"
+      variant="none"
+      class="picker viz-mono"
+      aria-label="Machines"
     >
       <template #default>
         <span class="truncate">{{ selectionLabel }}</span>
@@ -53,18 +56,60 @@ const selectionLabel = computed(() => {
 
       <template #item-leading="{ item }">
         <span
-          class="size-2.5 rounded-full shrink-0"
+          class="swatch"
           :style="{ backgroundColor: colorFor(item) }"
         />
       </template>
     </USelectMenu>
-
-    <span
-      v-if="selection.length === 0"
-      class="text-sm"
-      :style="{ color: 'var(--viz-ink-secondary)' }"
-    >
-      Showing every device
-    </span>
   </div>
 </template>
+
+<style scoped>
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 10px 0;
+  border-top: 1px solid var(--viz-grid);
+  border-bottom: 1px solid var(--viz-grid);
+}
+
+.range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.range-option {
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--viz-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.range-option:hover {
+  color: var(--viz-ink);
+}
+
+.range-option.is-active {
+  color: var(--viz-ink);
+  border-bottom-color: var(--viz-ink);
+}
+
+.picker {
+  min-width: 13rem;
+  font-size: 12px;
+  color: var(--viz-ink);
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+}
+</style>

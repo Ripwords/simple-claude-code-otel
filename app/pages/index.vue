@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { BreakdownRow, DeviceSummary, SeriesPoint } from '#shared/types'
+import type { BreakdownRow, SeriesPoint } from '#shared/types'
 import type { ChartBarGroup, ChartSeries } from '~/utils/viz'
 
-const { rangeQuery, bucket } = useDashboardQuery()
+const { rangeQuery, bucket, preset } = useDashboardQuery()
 const { colorFor } = useDeviceColors()
 
 const { data: devices, pending: devicesPending } = useDevices()
@@ -15,6 +15,8 @@ const { data: tokenSplit } = useBreakdown(rangeQuery, 'tokenType')
 const { data: apiErrors } = useBreakdown(rangeQuery, 'errorStatus')
 
 const BREAKDOWN_LIMIT = 8
+const LIVE_TOKEN_KEYS = ['input', 'output']
+const CACHE_TOKEN_KEYS = ['cacheRead', 'cacheCreation']
 
 const isEmpty = computed(() => (devices.value ?? []).length === 0 && (summaries.value ?? []).length === 0)
 
@@ -41,9 +43,10 @@ function toSeries(points: SeriesPoint[] | null): ChartSeries[] {
     }))
 }
 
-function toGroups(rows: BreakdownRow[] | null): ChartBarGroup[] {
+function toGroups(rows: BreakdownRow[] | null, keep?: string[]): ChartBarGroup[] {
   const grouped = new Map<string, BreakdownRow[]>()
   for (const row of rows ?? []) {
+    if (keep && !keep.includes(row.key)) continue
     const existing = grouped.get(row.key)
     if (existing) {
       existing.push(row)
@@ -65,155 +68,121 @@ function toGroups(rows: BreakdownRow[] | null): ChartBarGroup[] {
     .map(({ label, bars }) => ({ label, bars }))
 }
 
-function sum(rows: DeviceSummary[], of: (s: DeviceSummary) => number): number {
-  return rows.reduce((total, row) => total + of(row), 0)
-}
-
 const costChart = computed(() => toSeries(costSeries.value))
 const tokenChart = computed(() => toSeries(tokenSeries.value))
 const modelBars = computed(() => toGroups(costByModel.value))
 const toolBars = computed(() => toGroups(toolVolume.value))
-const tokenBars = computed(() => toGroups(tokenSplit.value))
+const liveTokenBars = computed(() => toGroups(tokenSplit.value, LIVE_TOKEN_KEYS))
+const cacheTokenBars = computed(() => toGroups(tokenSplit.value, CACHE_TOKEN_KEYS))
 const errorBars = computed(() => toGroups(apiErrors.value))
-
-interface Tile {
-  label: string
-  value: string
-  hint?: string
-}
-
-const totals = computed<Tile[]>(() => {
-  const rows = summaries.value ?? []
-  const requests = sum(rows, s => s.apiRequests)
-  const errors = sum(rows, s => s.apiErrors)
-
-  return [
-    { label: 'Total cost', value: formatUsd(sum(rows, s => s.costUsd)) },
-    { label: 'Sessions', value: formatCount(sum(rows, s => s.sessions)) },
-    { label: 'Active time', value: formatDuration(sum(rows, s => s.activeSeconds)) },
-    { label: 'Lines added', value: formatCompact(sum(rows, s => s.linesAdded)) },
-    { label: 'Tool calls', value: formatCount(sum(rows, s => s.toolCalls)) },
-    {
-      label: 'API error rate',
-      value: requests > 0 ? `${((errors / requests) * 100).toFixed(1)}%` : '--',
-      hint: `${formatCount(errors)} of ${formatCount(requests)} requests`
-    }
-  ]
-})
 </script>
 
 <template>
-  <UContainer class="py-8">
+  <div>
     <DashboardEmptyState
       v-if="isEmpty"
       :pending="devicesPending"
     />
 
-    <div
-      v-else
-      class="space-y-6"
-    >
+    <template v-else>
+      <DashboardNotices class="notices" />
+
       <DashboardFilters />
 
-      <DashboardDeviceStrip :summaries="summaries ?? []" />
+      <section class="hero">
+        <h1 class="sr-only">
+          Machine comparison, {{ preset.label.toLowerCase() }}
+        </h1>
+        <DashboardComparison :summaries="summaries ?? []" />
+      </section>
 
-      <div class="grid gap-4 grid-cols-2 lg:grid-cols-6">
-        <ChartStatTile
-          v-for="tile in totals"
-          :key="tile.label"
-          :label="tile.label"
-          :value="tile.value"
-          :hint="tile.hint"
-        />
-      </div>
-
-      <div class="grid gap-4 lg:grid-cols-2">
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              Cost over time
-            </h2>
-          </template>
+      <div class="panels">
+        <DashboardPanel eyebrow="Cost over time">
           <ChartTimeSeries
             :series="costChart"
             :bucket="bucket"
             :format="formatUsd"
-            area
           />
-        </UCard>
+        </DashboardPanel>
 
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              Tokens over time
-            </h2>
-          </template>
+        <DashboardPanel eyebrow="Tokens over time">
           <ChartTimeSeries
             :series="tokenChart"
             :bucket="bucket"
             :format="formatCompact"
           />
-        </UCard>
-      </div>
+        </DashboardPanel>
 
-      <div class="grid gap-4 lg:grid-cols-2 items-start">
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              Cost by model
-            </h2>
-          </template>
+        <DashboardPanel eyebrow="Cost by model">
           <ChartBars
             :groups="modelBars"
             :format="formatUsd"
           />
-        </UCard>
+        </DashboardPanel>
 
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              Tool calls by tool
-            </h2>
-          </template>
+        <DashboardPanel eyebrow="Tool calls by tool">
           <ChartBars
             :groups="toolBars"
             :format="formatCount"
           />
-        </UCard>
+        </DashboardPanel>
 
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              Tokens by type
-            </h2>
-          </template>
+        <DashboardPanel
+          eyebrow="Live tokens"
+          note="What you sent and what came back. Priced per token."
+        >
           <ChartBars
-            :groups="tokenBars"
+            :groups="liveTokenBars"
             :format="formatCompact"
           />
-        </UCard>
+        </DashboardPanel>
 
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold">
-              API errors by status code
-            </h2>
-          </template>
+        <DashboardPanel
+          eyebrow="Cache tokens"
+          note="Context re-read and re-written between turns. Runs orders of magnitude larger, so it gets its own scale."
+        >
+          <ChartBars
+            :groups="cacheTokenBars"
+            :format="formatCompact"
+          />
+        </DashboardPanel>
+
+        <DashboardPanel eyebrow="API errors by status code">
           <ChartBars
             :groups="errorBars"
             :format="formatCount"
           />
-        </UCard>
+        </DashboardPanel>
       </div>
 
-      <UCard>
-        <template #header>
-          <h2 class="font-semibold">
-            All measures by device
-          </h2>
-        </template>
+      <DashboardPanel
+        eyebrow="Every measure, every machine"
+        class="ledger"
+      >
         <DashboardSummaryTable :summaries="summaries ?? []" />
-      </UCard>
-    </div>
-  </UContainer>
+      </DashboardPanel>
+    </template>
+  </div>
 </template>
+
+<style scoped>
+.notices {
+  margin-bottom: 24px;
+}
+
+.hero {
+  padding: 36px 0 48px;
+}
+
+.panels {
+  display: grid;
+  gap: 40px 44px;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  padding-top: 40px;
+  border-top: 1px solid var(--viz-baseline);
+}
+
+.ledger {
+  margin-top: 48px;
+}
+</style>

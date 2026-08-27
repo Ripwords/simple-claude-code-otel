@@ -59,12 +59,7 @@ export function linePath(points: ChartPoint[], sx: Scale, sy: Scale): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(' ')
 }
 
-export function areaPath(points: ChartPoint[], sx: Scale, sy: Scale, baseline: number): string {
-  if (points.length === 0) return ''
-  const first = points[0]!
-  const last = points[points.length - 1]!
-  return `${linePath(points, sx, sy)} L${sx(last.x).toFixed(2)},${baseline.toFixed(2)} L${sx(first.x).toFixed(2)},${baseline.toFixed(2)} Z`
-}
+export const EM_DASH = '\u2014'
 
 const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 const USD_PRECISE = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })
@@ -97,8 +92,39 @@ export function formatHours(seconds: number): string {
 }
 
 export function formatRatio(value: number | null, unit: string): string {
-  if (value === null || !Number.isFinite(value)) return '--'
+  if (value === null || !Number.isFinite(value)) return EM_DASH
   return `${formatCompact(value)}${unit}`
+}
+
+/** UTC so the server and the client agree; local time would mismatch on hydration. */
+export function formatStamp(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return EM_DASH
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}Z`
+}
+
+export interface Divergence {
+  /** 0 when the right side holds everything, 1 when the left side does, 0.5 at parity. */
+  share: number
+  dominant: 'left' | 'right' | null
+  ratio: string
+}
+
+export function divergence(left: number | null, right: number | null): Divergence | null {
+  if (left === null || right === null) return null
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null
+  const total = left + right
+  if (total <= 0) return null
+
+  const bigger = Math.max(left, right)
+  const smaller = Math.min(left, right)
+
+  return {
+    share: left / total,
+    dominant: left === right ? null : left > right ? 'left' : 'right',
+    ratio: smaller > 0 ? `${(bigger / smaller).toFixed(1)}\u00d7` : 'all'
+  }
 }
 
 export function formatBucket(iso: string, bucket: 'hour' | 'day'): string {
