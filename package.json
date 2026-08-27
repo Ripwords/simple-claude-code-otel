@@ -12,7 +12,8 @@
     "db:push": "bun --env-file=.env.local scripts/db-push.mjs",
     "test": "vitest run",
     "auth:hash": "node scripts/hash-password.mjs",
-    "verify:lifecycle": "bun --env-file=.env.local scripts/verify-lifecycle.mjs"
+    "verify:lifecycle": "bun --env-file=.env.local scripts/verify-lifecycle.mjs",
+    "verify:account": "bun --env-file=.env.local scripts/verify-account-binding.mjs"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.125",

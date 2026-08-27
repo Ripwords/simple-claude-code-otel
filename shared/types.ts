@@ -23,6 +23,19 @@ export type Bucket = 'hour' | 'day'
 // out of agreement with the timestamps it summarises.
 export type DeviceStatus = 'pending' | 'reporting' | 'revoked'
 
+/** The Claude Code account a machine's token is claimed by, from the first telemetry it sent. */
+export interface DeviceAccount {
+  uuid: string
+  email: string | null
+}
+
+/** The last time telemetry arrived under a different account and was refused. */
+export interface DeviceAccountConflict {
+  uuid: string
+  at: string
+  count: number
+}
+
 export interface DeviceInfo {
   id: string
   name: string
@@ -33,6 +46,8 @@ export interface DeviceInfo {
   lastSeen: string | null
   revokedAt: string | null
   sessions: number
+  account: DeviceAccount | null
+  conflict: DeviceAccountConflict | null
 }
 
 // What a delete destroyed, via the cascade from telemetry.device.

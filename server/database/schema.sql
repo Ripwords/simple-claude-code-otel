@@ -8,8 +8,25 @@ create table if not exists telemetry.device (
   created_at   timestamptz not null default now(),
   first_seen   timestamptz,
   last_seen_at timestamptz,
-  revoked_at   timestamptz
+  revoked_at   timestamptz,
+
+  -- Claimed on first telemetry and enforced afterwards, so signing into a different
+  -- Claude Code account on this machine stops reporting instead of quietly mixing
+  -- another account's spend into this machine's numbers.
+  account_uuid  text,
+  account_email text,
+
+  -- The last rejected attempt, kept so the dashboard can say why a machine went quiet.
+  rejected_account_uuid text,
+  rejected_at           timestamptz,
+  rejected_count        integer not null default 0
 );
+
+alter table telemetry.device add column if not exists account_uuid text;
+alter table telemetry.device add column if not exists account_email text;
+alter table telemetry.device add column if not exists rejected_account_uuid text;
+alter table telemetry.device add column if not exists rejected_at timestamptz;
+alter table telemetry.device add column if not exists rejected_count integer not null default 0;
 
 create table if not exists telemetry.session (
   session_id   text        primary key,
