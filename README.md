@@ -23,14 +23,14 @@ session rather than copied from a doc.
 
 ## Deploy it
 
-You need a Vercel account and Node 20 or newer.
+You need a Vercel account, Bun, and Node 20 or newer.
 
 1. Clone the repository and install dependencies.
 
 	```sh
 	git clone git@github.com:Ripwords/simple-claude-code-otel.git
 	cd simple-claude-code-otel
-	pnpm install
+	bun install
 	```
 
 2. Create the Vercel project and attach a Neon Postgres database. The integration
@@ -55,7 +55,7 @@ You need a Vercel account and Node 20 or newer.
 
 	```sh
 	vercel env pull .env.local
-	pnpm db:push
+	bun run db:push
 	```
 
 5. Deploy.
@@ -136,7 +136,7 @@ Rows older than `RETENTION_DAYS` (90 by default) are deleted by a daily cron at
 ## Develop locally
 
 ```sh
-pnpm dev
+bun run dev
 ```
 
 Point a machine at `http://localhost:3000/api/otlp` to send it real traffic.
@@ -144,9 +144,9 @@ Lower `OTEL_METRIC_EXPORT_INTERVAL` to `10000` while you are working, or you wil
 wait a minute between exports.
 
 ```sh
-pnpm lint
-pnpm typecheck
-pnpm vitest run
+bun run lint
+bun run typecheck
+bun run test
 ```
 
 ## Design notes
