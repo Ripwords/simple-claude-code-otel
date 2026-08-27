@@ -147,7 +147,9 @@ Renaming a machine keeps its whole history, because the name is a label rather t
 the identity.
 
 Rotating a token kills the old one immediately and keeps the history. Do this if a
-token leaks, or if you lost it before copying it.
+token leaks, or if you lost it before copying it. Rotation keeps the machine bound
+to the same Claude Code account, because a new credential for the same machine is
+not a change of owner. To hand the machine to a different account, release it.
 
 Revoking a token stops that machine reporting and keeps everything it already sent.
 Its spend still appears in every chart, because the money was real.
