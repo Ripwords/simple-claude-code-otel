@@ -1,0 +1,1227 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "device.name",
+            "value": {
+              "stringValue": "probe-laptop"
+            }
+          },
+          {
+            "key": "device.role",
+            "value": {
+              "stringValue": "personal"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "arm64"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "darwin"
+            }
+          },
+          {
+            "key": "os.version",
+            "value": {
+              "stringValue": "25.5.0"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "claude-code"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "2.1.247"
+            }
+          }
+        ],
+        "droppedAttributesCount": 0
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "com.anthropic.claude_code.events",
+            "version": "2.1.247"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1787795838322000000",
+              "observedTimeUnixNano": "1787795838322000000",
+              "body": {
+                "stringValue": "claude_code.api_request"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "api_request"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.322Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 38
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "model",
+                  "value": {
+                    "stringValue": "claude-haiku-4-5-20251001"
+                  }
+                },
+                {
+                  "key": "input_tokens",
+                  "value": {
+                    "intValue": 10
+                  }
+                },
+                {
+                  "key": "output_tokens",
+                  "value": {
+                    "intValue": 237
+                  }
+                },
+                {
+                  "key": "cache_read_tokens",
+                  "value": {
+                    "intValue": 18140
+                  }
+                },
+                {
+                  "key": "cache_creation_tokens",
+                  "value": {
+                    "intValue": 19382
+                  }
+                },
+                {
+                  "key": "cost_usd",
+                  "value": {
+                    "doubleValue": 0.041773
+                  }
+                },
+                {
+                  "key": "cost_usd_micros",
+                  "value": {
+                    "intValue": 41773
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "intValue": 3975
+                  }
+                },
+                {
+                  "key": "request_id",
+                  "value": {
+                    "stringValue": "req_011CeSRWd9jB1vdKn14Anph5"
+                  }
+                },
+                {
+                  "key": "client_request_id",
+                  "value": {
+                    "stringValue": "fd42bfe5-40e3-4d64-9148-cc92e4b01059"
+                  }
+                },
+                {
+                  "key": "speed",
+                  "value": {
+                    "stringValue": "normal"
+                  }
+                },
+                {
+                  "key": "query_source",
+                  "value": {
+                    "stringValue": "sdk"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838322000000",
+              "observedTimeUnixNano": "1787795838322000000",
+              "body": {
+                "stringValue": "claude_code.assistant_response"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "assistant_response"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.322Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 39
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "response_length",
+                  "value": {
+                    "intValue": 2
+                  }
+                },
+                {
+                  "key": "response",
+                  "value": {
+                    "stringValue": "<REDACTED>"
+                  }
+                },
+                {
+                  "key": "request_id",
+                  "value": {
+                    "stringValue": "req_011CeSRWd9jB1vdKn14Anph5"
+                  }
+                },
+                {
+                  "key": "message.uuid",
+                  "value": {
+                    "stringValue": "3b3becbe-72f7-46c7-9aa9-2245deb3c142"
+                  }
+                },
+                {
+                  "key": "model",
+                  "value": {
+                    "stringValue": "claude-haiku-4-5-20251001"
+                  }
+                },
+                {
+                  "key": "query_source",
+                  "value": {
+                    "stringValue": "sdk"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838325000000",
+              "observedTimeUnixNano": "1787795838325000000",
+              "body": {
+                "stringValue": "claude_code.hook_execution_start"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "hook_execution_start"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.325Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 40
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "hook_event",
+                  "value": {
+                    "stringValue": "Stop"
+                  }
+                },
+                {
+                  "key": "hook_name",
+                  "value": {
+                    "stringValue": "Stop"
+                  }
+                },
+                {
+                  "key": "num_hooks",
+                  "value": {
+                    "stringValue": "1"
+                  }
+                },
+                {
+                  "key": "managed_only",
+                  "value": {
+                    "stringValue": "false"
+                  }
+                },
+                {
+                  "key": "hook_source",
+                  "value": {
+                    "stringValue": "merged"
+                  }
+                },
+                {
+                  "key": "safe_mode",
+                  "value": {
+                    "stringValue": "false"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838439000000",
+              "observedTimeUnixNano": "1787795838439000000",
+              "body": {
+                "stringValue": "claude_code.hook_execution_complete"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "hook_execution_complete"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.439Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 41
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "hook_event",
+                  "value": {
+                    "stringValue": "Stop"
+                  }
+                },
+                {
+                  "key": "hook_name",
+                  "value": {
+                    "stringValue": "Stop"
+                  }
+                },
+                {
+                  "key": "num_hooks",
+                  "value": {
+                    "stringValue": "1"
+                  }
+                },
+                {
+                  "key": "num_success",
+                  "value": {
+                    "stringValue": "1"
+                  }
+                },
+                {
+                  "key": "num_blocking",
+                  "value": {
+                    "stringValue": "0"
+                  }
+                },
+                {
+                  "key": "num_non_blocking_error",
+                  "value": {
+                    "stringValue": "0"
+                  }
+                },
+                {
+                  "key": "num_cancelled",
+                  "value": {
+                    "stringValue": "0"
+                  }
+                },
+                {
+                  "key": "total_duration_ms",
+                  "value": {
+                    "stringValue": "113"
+                  }
+                },
+                {
+                  "key": "managed_only",
+                  "value": {
+                    "stringValue": "false"
+                  }
+                },
+                {
+                  "key": "hook_source",
+                  "value": {
+                    "stringValue": "merged"
+                  }
+                },
+                {
+                  "key": "safe_mode",
+                  "value": {
+                    "stringValue": "false"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838442000000",
+              "observedTimeUnixNano": "1787795838442000000",
+              "body": {
+                "stringValue": "claude_code.mcp_server_connection"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "mcp_server_connection"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.442Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 42
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "disconnected"
+                  }
+                },
+                {
+                  "key": "transport_type",
+                  "value": {
+                    "stringValue": "claudeai-proxy"
+                  }
+                },
+                {
+                  "key": "server_scope",
+                  "value": {
+                    "stringValue": "claudeai"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "stringValue": "6150"
+                  }
+                },
+                {
+                  "key": "is_plugin",
+                  "value": {
+                    "boolValue": false
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838443000000",
+              "observedTimeUnixNano": "1787795838443000000",
+              "body": {
+                "stringValue": "claude_code.mcp_server_connection"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "mcp_server_connection"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.443Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 43
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "disconnected"
+                  }
+                },
+                {
+                  "key": "transport_type",
+                  "value": {
+                    "stringValue": "claudeai-proxy"
+                  }
+                },
+                {
+                  "key": "server_scope",
+                  "value": {
+                    "stringValue": "claudeai"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "stringValue": "4506"
+                  }
+                },
+                {
+                  "key": "is_plugin",
+                  "value": {
+                    "boolValue": false
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838443000000",
+              "observedTimeUnixNano": "1787795838443000000",
+              "body": {
+                "stringValue": "claude_code.mcp_server_connection"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "mcp_server_connection"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.443Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 44
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "disconnected"
+                  }
+                },
+                {
+                  "key": "transport_type",
+                  "value": {
+                    "stringValue": "claudeai-proxy"
+                  }
+                },
+                {
+                  "key": "server_scope",
+                  "value": {
+                    "stringValue": "claudeai"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "stringValue": "6151"
+                  }
+                },
+                {
+                  "key": "is_plugin",
+                  "value": {
+                    "boolValue": false
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838445000000",
+              "observedTimeUnixNano": "1787795838445000000",
+              "body": {
+                "stringValue": "claude_code.mcp_server_connection"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "mcp_server_connection"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.445Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 45
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "disconnected"
+                  }
+                },
+                {
+                  "key": "transport_type",
+                  "value": {
+                    "stringValue": "stdio"
+                  }
+                },
+                {
+                  "key": "server_scope",
+                  "value": {
+                    "stringValue": "user"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "stringValue": "6408"
+                  }
+                },
+                {
+                  "key": "is_plugin",
+                  "value": {
+                    "boolValue": false
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            },
+            {
+              "timeUnixNano": "1787795838454000000",
+              "observedTimeUnixNano": "1787795838454000000",
+              "body": {
+                "stringValue": "claude_code.mcp_server_connection"
+              },
+              "attributes": [
+                {
+                  "key": "device.name",
+                  "value": {
+                    "stringValue": "probe-laptop"
+                  }
+                },
+                {
+                  "key": "device.role",
+                  "value": {
+                    "stringValue": "personal"
+                  }
+                },
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "eaf72754429ded8abdd4297da84eef66ac89feb14d36c118ad7ef130c381ff8e"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "4e9f3d80-25c1-478b-8732-d43eede3295f"
+                  }
+                },
+                {
+                  "key": "organization.id",
+                  "value": {
+                    "stringValue": "36790f38-8cdb-41cf-811c-6a4d35babed2"
+                  }
+                },
+                {
+                  "key": "user.email",
+                  "value": {
+                    "stringValue": "thetechyhub@gmail.com"
+                  }
+                },
+                {
+                  "key": "user.account_uuid",
+                  "value": {
+                    "stringValue": "11da1661-c0ff-46af-b748-a672c71d09c7"
+                  }
+                },
+                {
+                  "key": "user.account_id",
+                  "value": {
+                    "stringValue": "user_013CrhbPvzBA1YSQTKhJ2oRg"
+                  }
+                },
+                {
+                  "key": "terminal.type",
+                  "value": {
+                    "stringValue": "ghostty"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "mcp_server_connection"
+                  }
+                },
+                {
+                  "key": "event.timestamp",
+                  "value": {
+                    "stringValue": "2026-08-27T01:57:18.454Z"
+                  }
+                },
+                {
+                  "key": "event.sequence",
+                  "value": {
+                    "intValue": 46
+                  }
+                },
+                {
+                  "key": "prompt.id",
+                  "value": {
+                    "stringValue": "1736fed7-4d7e-446b-bbd0-c9b3f71d9ba1"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "disconnected"
+                  }
+                },
+                {
+                  "key": "transport_type",
+                  "value": {
+                    "stringValue": "stdio"
+                  }
+                },
+                {
+                  "key": "server_scope",
+                  "value": {
+                    "stringValue": "dynamic"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "stringValue": "5691"
+                  }
+                },
+                {
+                  "key": "is_plugin",
+                  "value": {
+                    "boolValue": true
+                  }
+                },
+                {
+                  "key": "plugin_id_hash",
+                  "value": {
+                    "stringValue": "f13cc761fa71582e"
+                  }
+                },
+                {
+                  "key": "plugin.name",
+                  "value": {
+                    "stringValue": "playwright"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

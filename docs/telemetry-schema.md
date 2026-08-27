@@ -75,3 +75,14 @@ Log records carry the prefixed name in `body.stringValue`
 
 The tool events key on `tool_name`. Anthropic's older published doc said `name`;
 that is stale for this version.
+
+## Where the config goes
+
+A `settings.json` `env` block drives telemetry completely, verified end to end
+against a project-level `.claude/settings.json` with every OTEL variable unset in
+the shell. `OTEL_RESOURCE_ATTRIBUTES` set there reaches the resource attributes
+intact.
+
+So the per-device install is a `~/.claude/settings.json` on each machine carrying
+the same endpoint and token and a different `device.name`. Nothing goes in a shell
+profile.
