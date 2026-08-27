@@ -280,7 +280,7 @@ describe('foldDevices', () => {
 
     const devices = foldDevices(expectOk(transformMetrics(body)).rows)
 
-    expect(devices.map(entry => entry.device).sort()).toEqual(['probe-three', 'probe-two'])
+    expect(devices.map(entry => entry.device)).toEqual(['probe-three', 'probe-two'])
   })
 
   it('keeps the earliest timestamp seen for a device', () => {

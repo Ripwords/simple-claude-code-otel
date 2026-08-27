@@ -18,6 +18,7 @@ export async function queryDevices(devices: string[] | null): Promise<DeviceInfo
     with session_agg as (
       select device, min(started_at) as first_seen, max(last_seen_at) as last_seen, count(*) as sessions
       from telemetry.session
+      where ($1::text[] is null or device = any($1))
       group by device
     )
     select
@@ -36,18 +37,30 @@ export async function queryDevices(devices: string[] | null): Promise<DeviceInfo
 }
 
 export async function acknowledgeDevice(device: string): Promise<DeviceInfo | null> {
-  const updated = await select(
-    'update telemetry.device set acknowledged_at = coalesce(acknowledged_at, now()) where device = $1 returning device',
-    [device]
-  )
-  if (updated.length === 0) return null
+  // A device that reported telemetry before this table existed has no row to update. Seeding it from
+  // its own sessions is what keeps every device the list shows dismissable.
+  const acknowledged = await select(`
+    with candidate as (
+      select device, first_seen from telemetry.device where device = $1
+      union all
+      select device, min(started_at) as first_seen from telemetry.session where device = $1 group by device
+    ),
+    seed as (
+      select device, min(first_seen) as first_seen from candidate group by device
+    )
+    insert into telemetry.device (device, first_seen, acknowledged_at)
+    select device, first_seen, now() from seed
+    on conflict (device) do update set acknowledged_at = coalesce(telemetry.device.acknowledged_at, now())
+    returning device
+  `, [device])
+  if (acknowledged.length === 0) return null
 
   const [info] = await queryDevices([device])
   return info ?? null
 }
 
 function toDeviceInfo(row: Record<string, unknown>): DeviceInfo {
-  const acknowledgedAt = row.acknowledged_at === null || row.acknowledged_at === undefined ? null : str(row.acknowledged_at)
+  const acknowledgedAt = nullableStr(row.acknowledged_at)
   const device = str(row.device)
   return {
     device,
@@ -238,4 +251,8 @@ function nullableNum(value: unknown): number | null {
 
 function str(value: unknown): string {
   return String(value ?? '')
+}
+
+function nullableStr(value: unknown): string | null {
+  return value === null || value === undefined ? null : str(value)
 }

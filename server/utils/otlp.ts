@@ -402,7 +402,8 @@ export function foldDevices(rows: readonly { device: string, ts: Date }[]): Devi
     if (!existing) devices.set(row.device, { device: row.device, firstSeen: row.ts })
     else if (row.ts < existing.firstSeen) existing.firstSeen = row.ts
   }
-  return [...devices.values()]
+  // Sorted so concurrent batches take the upsert row locks in the same order and cannot deadlock.
+  return [...devices.values()].sort((a, b) => a.device.localeCompare(b.device))
 }
 
 export function buildDeviceUpserts(devices: DeviceRow[]): Statement[] {
