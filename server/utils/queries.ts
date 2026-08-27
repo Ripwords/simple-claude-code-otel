@@ -1,4 +1,4 @@
-import { EVENTS, METRICS } from '#shared/types'
+import { EVENTS, METRICS, UNLABELLED_DEVICE } from '#shared/types'
 import type { BreakdownRow, Bucket, DeviceInfo, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
 import { db } from './db'
 import type { ResolvedRange } from './range'
@@ -15,23 +15,49 @@ const UTC_ISO = `'YYYY-MM-DD"T"HH24:MI:SS"Z"'`
 
 export async function queryDevices(devices: string[] | null): Promise<DeviceInfo[]> {
   const rows = await select(`
+    with session_agg as (
+      select device, min(started_at) as first_seen, max(last_seen_at) as last_seen, count(*) as sessions
+      from telemetry.session
+      group by device
+    )
     select
-      device,
-      to_char(min(started_at) at time zone 'utc', ${UTC_ISO}) as first_seen,
-      to_char(max(last_seen_at) at time zone 'utc', ${UTC_ISO}) as last_seen,
-      count(*) as sessions
-    from telemetry.session
-    where ($1::text[] is null or device = any($1))
-    group by device
-    order by device
+      coalesce(d.device, s.device) as device,
+      to_char(least(d.first_seen, s.first_seen) at time zone 'utc', ${UTC_ISO}) as first_seen,
+      to_char(coalesce(s.last_seen, d.first_seen) at time zone 'utc', ${UTC_ISO}) as last_seen,
+      coalesce(s.sessions, 0) as sessions,
+      to_char(d.acknowledged_at at time zone 'utc', ${UTC_ISO}) as acknowledged_at
+    from telemetry.device d
+    full outer join session_agg s on s.device = d.device
+    where ($1::text[] is null or coalesce(d.device, s.device) = any($1))
+    order by 1
   `, [devices])
 
-  return rows.map(row => ({
-    device: str(row.device),
+  return rows.map(toDeviceInfo)
+}
+
+export async function acknowledgeDevice(device: string): Promise<DeviceInfo | null> {
+  const updated = await select(
+    'update telemetry.device set acknowledged_at = coalesce(acknowledged_at, now()) where device = $1 returning device',
+    [device]
+  )
+  if (updated.length === 0) return null
+
+  const [info] = await queryDevices([device])
+  return info ?? null
+}
+
+function toDeviceInfo(row: Record<string, unknown>): DeviceInfo {
+  const acknowledgedAt = row.acknowledged_at === null || row.acknowledged_at === undefined ? null : str(row.acknowledged_at)
+  const device = str(row.device)
+  return {
+    device,
     firstSeen: str(row.first_seen),
     lastSeen: str(row.last_seen),
-    sessions: num(row.sessions)
-  }))
+    sessions: num(row.sessions),
+    acknowledgedAt,
+    isNew: acknowledgedAt === null,
+    isUnlabelled: device === UNLABELLED_DEVICE
+  }
 }
 
 export async function querySummary(range: ResolvedRange): Promise<DeviceSummary[]> {
