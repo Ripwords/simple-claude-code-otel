@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import logsFixture from './fixtures/logs.json'
 import metricsFixture from './fixtures/metrics.json'
+import { UNLABELLED_DEVICE } from '../shared/types'
 import {
   SESSION_ATTR_KEYS,
+  buildDeviceUpserts,
   buildMetricInserts,
+  foldDevices,
   transformLogs,
   transformMetrics,
   type MetricRow,
@@ -61,6 +64,10 @@ function twoPointBody(firstNano: string, secondNano: string): OtlpMetricsBody {
       }]
     }]
   }
+}
+
+function earliest(rows: { ts: Date }[]): Date {
+  return new Date(Math.min(...rows.map(row => row.ts.getTime())))
 }
 
 function syntheticRows(count: number): MetricRow[] {
@@ -248,5 +255,68 @@ describe('buildMetricInserts', () => {
 
   it('emits nothing for an empty row set', () => {
     expect(buildMetricInserts([])).toEqual([])
+  })
+})
+
+describe('foldDevices', () => {
+  it('folds many datapoints of one device into a single entry', () => {
+    const result = expectOk(transformMetrics(cloneMetrics()))
+    const devices = foldDevices(result.rows)
+
+    expect(result.rows.length).toBeGreaterThan(1)
+    expect(devices).toEqual([{ device: 'probe-two', firstSeen: earliest(result.rows) }])
+  })
+
+  it('yields one entry per device when a body carries two', () => {
+    const body = cloneMetrics()
+    const second = structuredClone(body.resourceMetrics![0]!)
+    dropAttr(second.resource!, 'device.name')
+    second.resource!.attributes!.push({ key: 'device.name', value: { stringValue: 'probe-three' } })
+    eachDataPoint({ resourceMetrics: [second] }, (point) => {
+      dropAttr(point, 'device.name')
+      point.attributes?.push({ key: 'device.name', value: { stringValue: 'probe-three' } } as never)
+    })
+    body.resourceMetrics!.push(second)
+
+    const devices = foldDevices(expectOk(transformMetrics(body)).rows)
+
+    expect(devices.map(entry => entry.device).sort()).toEqual(['probe-three', 'probe-two'])
+  })
+
+  it('keeps the earliest timestamp seen for a device', () => {
+    const body = twoPointBody('1787795897473000000', '1787795894906000000')
+    const rows = expectOk(transformMetrics(body)).rows
+    const devices = foldDevices(rows)
+
+    expect(devices).toHaveLength(1)
+    expect(devices[0]!.firstSeen.getTime()).toBe(1787795894906)
+    expect(devices[0]!.firstSeen.getTime()).toBeLessThan(rows[0]!.ts.getTime())
+  })
+
+  it('yields the unlabelled device when no device.name is set anywhere', () => {
+    const body = cloneMetrics()
+    for (const resourceMetrics of body.resourceMetrics ?? []) {
+      if (resourceMetrics.resource) dropAttr(resourceMetrics.resource, 'device.name')
+    }
+    eachDataPoint(body, point => dropAttr(point, 'device.name'))
+
+    const devices = foldDevices(expectOk(transformMetrics(body)).rows)
+
+    expect(devices.map(entry => entry.device)).toEqual([UNLABELLED_DEVICE])
+  })
+})
+
+describe('buildDeviceUpserts', () => {
+  it('never writes acknowledged_at and keeps the earliest first_seen on conflict', () => {
+    const [statement] = buildDeviceUpserts(foldDevices(expectOk(transformMetrics(cloneMetrics())).rows))
+
+    expect(statement!.text).toContain('insert into telemetry.device (device, first_seen)')
+    expect(statement!.text).toContain('first_seen = least(telemetry.device.first_seen, excluded.first_seen)')
+    expect(statement!.text).not.toContain('acknowledged_at')
+    expect(statement!.params).toEqual(['probe-two', earliest(expectOk(transformMetrics(cloneMetrics())).rows).toISOString()])
+  })
+
+  it('emits nothing for an empty device set', () => {
+    expect(buildDeviceUpserts([])).toEqual([])
   })
 })

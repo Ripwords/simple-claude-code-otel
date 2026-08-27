@@ -389,3 +389,35 @@ function chunk<T>(rows: T[]): T[][] {
   }
   return chunks
 }
+
+export interface DeviceRow {
+  device: string
+  firstSeen: Date
+}
+
+export function foldDevices(rows: readonly { device: string, ts: Date }[]): DeviceRow[] {
+  const devices = new Map<string, DeviceRow>()
+  for (const row of rows) {
+    const existing = devices.get(row.device)
+    if (!existing) devices.set(row.device, { device: row.device, firstSeen: row.ts })
+    else if (row.ts < existing.firstSeen) existing.firstSeen = row.ts
+  }
+  return [...devices.values()]
+}
+
+export function buildDeviceUpserts(devices: DeviceRow[]): Statement[] {
+  return chunk(devices).map((batch) => {
+    const params: unknown[] = []
+    const tuples = batch.map((row) => {
+      const n = params.length
+      params.push(row.device, row.firstSeen.toISOString())
+      return `($${n + 1}, $${n + 2}::timestamptz)`
+    })
+    return {
+      text: `insert into telemetry.device (device, first_seen) values ${tuples.join(', ')} `
+        + 'on conflict (device) do update set '
+        + 'first_seen = least(telemetry.device.first_seen, excluded.first_seen)',
+      params
+    }
+  })
+}
