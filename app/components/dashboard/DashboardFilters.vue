@@ -14,7 +14,9 @@ const selection = computed({
 })
 
 const selectionLabel = computed(() => {
-  if (selection.value.length === 0) return `All ${options.value.length} machines`
+  if (selection.value.length === 0) {
+    return options.value.length === 1 ? 'The only machine' : `All ${options.value.length} machines`
+  }
   if (selection.value.length > 1) return `${selection.value.length} machines`
   // Never fall back to the id: a uuid must not surface in this control.
   return options.value.find(option => option.value === selection.value[0])?.label ?? '1 machine'
