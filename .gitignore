@@ -27,3 +27,6 @@ logs
 # Local verification artifacts
 .playwright-mcp
 *.png
+
+# ...but the shipped app icons are real assets.
+!public/*.png

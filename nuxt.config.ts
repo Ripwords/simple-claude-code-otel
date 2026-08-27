@@ -8,6 +8,19 @@ export default defineNuxtConfig({
     enabled: true
   },
 
+  app: {
+    head: {
+      link: [
+        // The SVG carries its own prefers-color-scheme swap, so it inverts with the
+        // browser chrome. The .ico is the light-only fallback for anything that
+        // cannot render it.
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' }
+      ]
+    }
+  },
+
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" shape-rendering="crispEdges" role="img" aria-label="Two machines split by a spine">
+  <title>Claude Code Telemetry</title>
+  <style>
+    .field { fill: #f9f9f7; }
+    .mark { fill: #0b0b0b; }
+    @media (prefers-color-scheme: dark) {
+      .field { fill: #0d0d0d; }
+      .mark { fill: #f9f9f7; }
+    }
+  </style>
+  <rect class="field" width="16" height="16"/>
+  <g class="mark">
+    <rect x="8" y="2" width="6" height="5"/>
+    <rect x="3" y="9" width="4" height="5"/>
+    <rect x="7" y="0" width="1" height="16"/>
+  </g>
+</svg>
