@@ -8,19 +8,31 @@ import {
   buildSessionUpserts,
   transformLogs,
   transformMetrics,
+  type BatchAccount,
   type MetricRow,
+  type OtlpLogsBody,
   type OtlpMetricsBody
 } from '../server/utils/otlp'
 
 const metricsBody = metricsFixture as OtlpMetricsBody
-const logsBody = logsFixture
+const logsBody = logsFixture as OtlpLogsBody
+
+const ACCOUNT_UUID = '11da1661-c0ff-46af-b748-a672c71d09c7'
+const ACCOUNT_EMAIL = 'thetechyhub@gmail.com'
+const OTHER_ACCOUNT_UUID = '4c8b0d92-77ae-4a1f-9d63-0e2f5a1b8c40'
 
 const DEVICE_ID = '11111111-2222-3333-4444-555555555555'
 const OTHER_DEVICE_ID = '99999999-8888-7777-6666-555555555555'
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
+type AttrHolder = { attributes?: { key: string }[] }
+
 function cloneMetrics(): OtlpMetricsBody {
   return structuredClone(metricsBody)
+}
+
+function cloneLogs(): OtlpLogsBody {
+  return structuredClone(logsBody)
 }
 
 function eachDataPoint(body: OtlpMetricsBody, visit: (point: { attributes?: { key: string }[] }) => void): void {
@@ -30,6 +42,28 @@ function eachDataPoint(body: OtlpMetricsBody, visit: (point: { attributes?: { ke
         for (const point of metric.sum?.dataPoints ?? []) visit(point)
       }
     }
+  }
+}
+
+function eachLogRecord(body: OtlpLogsBody, visit: (record: AttrHolder) => void): void {
+  for (const resourceLogs of body.resourceLogs ?? []) {
+    for (const scope of resourceLogs.scopeLogs ?? []) {
+      for (const record of scope.logRecords ?? []) visit(record)
+    }
+  }
+}
+
+function collect(walk: (visit: (holder: AttrHolder) => void) => void): AttrHolder[] {
+  const holders: AttrHolder[] = []
+  walk(holder => holders.push(holder))
+  return holders
+}
+
+function restampAccountAfterFirst(holders: AttrHolder[], uuid: string): void {
+  const carrying = holders.filter(holder => holder.attributes?.some(attr => attr.key === 'user.account_uuid'))
+  for (const holder of carrying.slice(1)) {
+    dropAttr(holder, 'user.account_uuid')
+    holder.attributes?.push({ key: 'user.account_uuid', value: { stringValue: uuid } } as never)
   }
 }
 
@@ -51,7 +85,7 @@ function renameDevice(body: OtlpMetricsBody, name: string): OtlpMetricsBody {
   return body
 }
 
-function expectOk<Row>(result: { ok: true, rows: Row[], sessions: unknown[] } | { ok: false, error: string }) {
+function expectOk<Row>(result: { ok: true, rows: Row[], sessions: unknown[], account: BatchAccount | null } | { ok: false, error: string }) {
   if (!result.ok) throw new Error(`expected a successful transform, got: ${result.error}`)
   return result
 }
@@ -298,5 +332,34 @@ describe('buildDeviceLivenessUpdate', () => {
 
   it('emits nothing for an empty batch, so an empty post cannot mark a device as reporting', () => {
     expect(buildDeviceLivenessUpdate(DEVICE_ID, [])).toEqual([])
+  })
+})
+
+describe('batch account', () => {
+  it('surfaces the account the captured metric and log bodies were sent under', () => {
+    const account = { uuid: ACCOUNT_UUID, email: ACCOUNT_EMAIL }
+
+    expect(expectOk(transformMetrics(cloneMetrics(), DEVICE_ID)).account).toEqual(account)
+    expect(expectOk(transformLogs(cloneLogs(), DEVICE_ID)).account).toEqual(account)
+  })
+
+  it('surfaces no account for a batch sent by a signed-out Claude Code', () => {
+    const metrics = cloneMetrics()
+    eachDataPoint(metrics, point => dropAttr(point, 'user.account_uuid'))
+    const logs = cloneLogs()
+    eachLogRecord(logs, record => dropAttr(record, 'user.account_uuid'))
+
+    expect(expectOk(transformMetrics(metrics, DEVICE_ID)).account).toBeNull()
+    expect(expectOk(transformLogs(logs, DEVICE_ID)).account).toBeNull()
+  })
+
+  it('keeps the first account when later records in the same body name another', () => {
+    const metrics = cloneMetrics()
+    restampAccountAfterFirst(collect(visit => eachDataPoint(metrics, visit)), OTHER_ACCOUNT_UUID)
+    const logs = cloneLogs()
+    restampAccountAfterFirst(collect(visit => eachLogRecord(logs, visit)), OTHER_ACCOUNT_UUID)
+
+    expect(expectOk(transformMetrics(metrics, DEVICE_ID)).account?.uuid).toBe(ACCOUNT_UUID)
+    expect(expectOk(transformLogs(logs, DEVICE_ID)).account?.uuid).toBe(ACCOUNT_UUID)
   })
 })

@@ -1,12 +1,13 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import type { DeviceCascade, DeviceInfo, DeviceSecret, DeviceStatus } from '../../shared/types'
+import type { DeviceAccount, DeviceAccountConflict, DeviceCascade, DeviceInfo, DeviceSecret, DeviceStatus } from '../../shared/types'
 import { deviceStatus, mintToken } from './deviceToken'
 import { db } from './db'
 
 const UNIQUE_VIOLATION = '23505'
 
 const DEVICE_COLUMNS = `d.id, d.name, d.token_prefix, d.created_at, d.first_seen, d.last_seen_at, d.revoked_at,
+  d.account_uuid, d.account_email, d.rejected_account_uuid, d.rejected_at, d.rejected_count,
   (select count(*) from telemetry.session s where s.device_id = d.id) as sessions`
 
 export const deviceNameSchema = z.string().trim().min(1).max(64)
@@ -41,7 +42,9 @@ export function toDeviceInfo(row: Record<string, unknown>): DeviceInfo {
     firstSeen,
     lastSeen: timestamp(row.last_seen_at),
     revokedAt,
-    sessions: Number(row.sessions ?? 0)
+    sessions: Number(row.sessions ?? 0),
+    account: toAccount(row),
+    conflict: toConflict(row)
   }
 }
 
@@ -94,6 +97,17 @@ export async function revokeDevice(id: string): Promise<DeviceInfo> {
   return toDeviceInfo(found(rows))
 }
 
+// Releasing re-arms trust on first use, so the next account to report claims the machine.
+export async function releaseDevice(id: string): Promise<DeviceInfo> {
+  const rows = await db().query(
+    `with updated as (update telemetry.device set account_uuid = null, account_email = null,
+       rejected_account_uuid = null, rejected_at = null, rejected_count = 0 where id = $1 returning *)
+     select ${DEVICE_COLUMNS} from updated d`,
+    [id]
+  )
+  return toDeviceInfo(found(rows))
+}
+
 export async function deleteDevice(id: string): Promise<DeviceCascade> {
   const rows = await db().query(
     `with counts as (
@@ -136,6 +150,20 @@ function found(rows: Record<string, unknown>[]): Record<string, unknown> {
 
 function notFound() {
   return createError({ statusCode: 404, statusMessage: 'Device not found' })
+}
+
+function toAccount(row: Record<string, unknown>): DeviceAccount | null {
+  const uuid = row.account_uuid
+  if (uuid === null || uuid === undefined) return null
+  const email = row.account_email
+  return { uuid: String(uuid), email: email === null || email === undefined ? null : String(email) }
+}
+
+function toConflict(row: Record<string, unknown>): DeviceAccountConflict | null {
+  const count = Number(row.rejected_count ?? 0)
+  const at = timestamp(row.rejected_at)
+  if (count === 0 || at === null) return null
+  return { uuid: String(row.rejected_account_uuid), at, count }
 }
 
 function timestamp(value: unknown): string | null {

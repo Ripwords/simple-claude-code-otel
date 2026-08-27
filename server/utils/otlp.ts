@@ -101,13 +101,19 @@ export interface SessionRow {
   attrs: AttrMap
 }
 
+/** The Claude Code account a batch of telemetry says it came from. */
+export interface BatchAccount {
+  uuid: string
+  email: string | null
+}
+
 export interface Statement {
   text: string
   params: unknown[]
 }
 
 export type TransformResult<Row>
-  = | { ok: true, rows: Row[], sessions: SessionRow[] }
+  = | { ok: true, rows: Row[], sessions: SessionRow[], account: BatchAccount | null }
     | { ok: false, error: string }
 
 export const FIELD_SEP = '\u001f'
@@ -170,6 +176,7 @@ export function dedupeKey(parts: string[]): string {
 export function transformMetrics(body: OtlpMetricsBody, deviceId: string): TransformResult<MetricRow> {
   const rows: MetricRow[] = []
   const sessions = new Map<string, SessionRow>()
+  let account: BatchAccount | null = null
 
   for (const resourceMetrics of body.resourceMetrics ?? []) {
     const resourceAttrs = attrsToMap(resourceMetrics.resource?.attributes)
@@ -211,18 +218,20 @@ export function transformMetrics(body: OtlpMetricsBody, deviceId: string): Trans
             attrs: stripKeys(pointAttrs, METRIC_STRIPPED_KEYS)
           })
 
+          if (!account) account = readAccount(pointAttrs)
           accumulateSession(sessions, sessionId, deviceId, ts, pointAttrs, resourceAttrs)
         }
       }
     }
   }
 
-  return { ok: true, rows, sessions: [...sessions.values()] }
+  return { ok: true, rows, sessions: [...sessions.values()], account }
 }
 
 export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformResult<EventRow> {
   const rows: EventRow[] = []
   const sessions = new Map<string, SessionRow>()
+  let account: BatchAccount | null = null
 
   for (const resourceLogs of body.resourceLogs ?? []) {
     const resourceAttrs = attrsToMap(resourceLogs.resource?.attributes)
@@ -252,12 +261,13 @@ export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformRe
           attrs: stripKeys(recordAttrs, EVENT_STRIPPED_KEYS)
         })
 
+        if (!account) account = readAccount(recordAttrs)
         accumulateSession(sessions, sessionId, deviceId, ts, recordAttrs, resourceAttrs)
       }
     }
   }
 
-  return { ok: true, rows, sessions: [...sessions.values()] }
+  return { ok: true, rows, sessions: [...sessions.values()], account }
 }
 
 export function buildMetricInserts(rows: MetricRow[]): Statement[] {
@@ -307,6 +317,13 @@ export function buildSessionUpserts(sessions: SessionRow[]): Statement[] {
       params
     }
   })
+}
+
+// Claude Code only attaches account attributes while signed in, so an absent uuid means
+// "unauthenticated", not "a different account".
+function readAccount(attrs: AttrMap): BatchAccount | null {
+  const uuid = stringAttr(attrs, 'user.account_uuid')
+  return uuid === null ? null : { uuid, email: stringAttr(attrs, 'user.email') }
 }
 
 function accumulateSession(

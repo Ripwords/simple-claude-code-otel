@@ -1,5 +1,5 @@
 import { buildDeviceLivenessUpdate, buildMetricInserts, buildSessionUpserts, transformMetrics, type OtlpMetricsBody } from '../../../utils/otlp'
-import { authenticateDevice } from '../../../utils/deviceToken'
+import { authenticateDevice, enforceDeviceAccount } from '../../../utils/deviceToken'
 
 export default defineEventHandler(async (event) => {
   const device = await authenticateDevice(getRequestHeader(event, 'authorization'))
@@ -7,6 +7,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<OtlpMetricsBody>(event)
   const result = transformMetrics(body, device.id)
   if (!result.ok) throw createError({ statusCode: 400, statusMessage: result.error })
+
+  await enforceDeviceAccount(device, result.account)
 
   const statements = [
     ...buildSessionUpserts(result.sessions),

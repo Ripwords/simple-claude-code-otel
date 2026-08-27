@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { compareDevices, deviceNameSchema, parseDeviceId, toDeviceInfo } from '../server/utils/deviceQueries'
-import { deviceStatus } from '../server/utils/deviceToken'
+import { accountConflictError, decideAccount, deviceStatus } from '../server/utils/deviceToken'
 import type { DeviceInfo, DeviceStatus } from '../shared/types'
 
 const UUID = '9d5f5a3e-1c2b-4f7a-9e8d-6b7c8d9e0f1a'
 const NAME_64 = 'a'.repeat(64)
+const CLAIMED_ACCOUNT = '11da1661-c0ff-46af-b748-a672c71d09c7'
+const OTHER_ACCOUNT = '4c8b0d92-77ae-4a1f-9d63-0e2f5a1b8c40'
 
 function device(name: string, status: DeviceStatus): DeviceInfo {
   return {
@@ -16,7 +18,9 @@ function device(name: string, status: DeviceStatus): DeviceInfo {
     firstSeen: null,
     lastSeen: null,
     revokedAt: null,
-    sessions: 0
+    sessions: 0,
+    account: null,
+    conflict: null
   }
 }
 
@@ -106,7 +110,12 @@ describe('toDeviceInfo', () => {
     first_seen: null,
     last_seen_at: null,
     revoked_at: null,
-    sessions: '0'
+    sessions: '0',
+    account_uuid: null,
+    account_email: null,
+    rejected_account_uuid: null,
+    rejected_at: null,
+    rejected_count: '0'
   }
 
   it('leaves revokedAt null while a device is live', () => {
@@ -127,5 +136,70 @@ describe('toDeviceInfo', () => {
     const info = toDeviceInfo({ ...row, token_hash: 'deadbeef' }) as Record<string, unknown>
     expect(info.token_hash).toBeUndefined()
     expect(info.token).toBeUndefined()
+  })
+
+  it('leaves account null while no account has claimed the device', () => {
+    expect(toDeviceInfo(row).account).toBeNull()
+  })
+
+  it('surfaces the claiming account and its email', () => {
+    const claimed = toDeviceInfo({ ...row, account_uuid: CLAIMED_ACCOUNT, account_email: 'thetechyhub@gmail.com' })
+    expect(claimed.account).toEqual({ uuid: CLAIMED_ACCOUNT, email: 'thetechyhub@gmail.com' })
+  })
+
+  it('leaves email null on a claim that carried no address', () => {
+    expect(toDeviceInfo({ ...row, account_uuid: CLAIMED_ACCOUNT }).account).toEqual({ uuid: CLAIMED_ACCOUNT, email: null })
+  })
+
+  it('leaves conflict null on the zero count the neon driver returns as a string', () => {
+    expect(toDeviceInfo(row).conflict).toBeNull()
+  })
+
+  it('surfaces a conflict with its ISO timestamp and coerced count', () => {
+    const rejected = toDeviceInfo({
+      ...row,
+      account_uuid: CLAIMED_ACCOUNT,
+      rejected_account_uuid: OTHER_ACCOUNT,
+      rejected_at: '2026-01-02T03:04:05Z',
+      rejected_count: '3'
+    })
+
+    expect(rejected.conflict).toEqual({ uuid: OTHER_ACCOUNT, at: '2026-01-02T03:04:05.000Z', count: 3 })
+  })
+})
+
+describe('decideAccount', () => {
+  const batch = { uuid: CLAIMED_ACCOUNT, email: 'thetechyhub@gmail.com' }
+
+  it('claims an unclaimed device for the account that first reported', () => {
+    expect(decideAccount(null, batch)).toEqual({ kind: 'claim', account: batch })
+  })
+
+  it('allows the account that already holds the claim', () => {
+    expect(decideAccount(CLAIMED_ACCOUNT, batch)).toEqual({ kind: 'allow' })
+  })
+
+  it('rejects a second account and names both sides', () => {
+    expect(decideAccount(OTHER_ACCOUNT, batch)).toEqual({ kind: 'reject', claimed: OTHER_ACCOUNT, presented: CLAIMED_ACCOUNT })
+  })
+
+  it('allows a batch with no account, so a signed-out session is not dropped', () => {
+    expect(decideAccount(OTHER_ACCOUNT, null)).toEqual({ kind: 'allow' })
+    expect(decideAccount(null, null)).toEqual({ kind: 'allow' })
+  })
+})
+
+describe('accountConflictError', () => {
+  it('is a 403 so an operator can tell a wrong account from a bad token', () => {
+    expect(accountConflictError(CLAIMED_ACCOUNT, OTHER_ACCOUNT).statusCode).toBe(403)
+  })
+
+  it('leaks neither full uuid into the serialised body', () => {
+    const body = JSON.stringify(accountConflictError(CLAIMED_ACCOUNT, OTHER_ACCOUNT))
+
+    expect(body).not.toContain(CLAIMED_ACCOUNT)
+    expect(body).not.toContain(OTHER_ACCOUNT)
+    expect(body).toContain(CLAIMED_ACCOUNT.slice(0, 8))
+    expect(body).toContain(OTHER_ACCOUNT.slice(0, 8))
   })
 })
