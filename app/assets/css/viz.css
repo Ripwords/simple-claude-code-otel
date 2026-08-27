@@ -1,4 +1,4 @@
-.viz-root {
+:root {
   --viz-surface: #fcfcfb;
   --viz-page: #f9f9f7;
   --viz-ink: #0b0b0b;
@@ -25,7 +25,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])):where(:not(.light)) .viz-root {
+  :root:where(:not([data-theme="light"])):where(:not(.light)) {
     --viz-surface: #1a1a19;
     --viz-page: #0d0d0d;
     --viz-ink: #ffffff;
@@ -46,8 +46,8 @@
   }
 }
 
-:root[data-theme="dark"] .viz-root,
-:root.dark .viz-root {
+:root[data-theme="dark"],
+:root.dark {
   --viz-surface: #1a1a19;
   --viz-page: #0d0d0d;
   --viz-ink: #ffffff;
@@ -68,11 +68,52 @@
 }
 
 .viz-root {
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  color: var(--viz-ink);
+}
+
+.viz-mono {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+.viz-root svg text {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 .viz-tabular {
   font-variant-numeric: tabular-nums;
+}
+
+.viz-eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--viz-muted);
+}
+
+.viz-prose {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--viz-ink-secondary);
+  max-width: 62ch;
+}
+
+.viz-code {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border: 1px solid var(--viz-grid);
+  background: var(--viz-page);
+  color: var(--viz-ink);
+}
+
+.viz-focus:focus-visible {
+  outline: 2px solid var(--viz-ink);
+  outline-offset: 2px;
 }
 
 .viz-no-data {
