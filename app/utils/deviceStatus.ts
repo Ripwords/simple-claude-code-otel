@@ -76,8 +76,16 @@ export const DEVICE_NAME_MAX = 64
 
 export const TOKEN_PLACEHOLDER = '<token>'
 
+export const SETUP_SCRIPT_URL
+  = 'https://raw.githubusercontent.com/Ripwords/simple-claude-code-otel/main/scripts/setup-device.sh'
+
+/**
+ * Fetched over https rather than run from a checkout, so a machine being set up
+ * needs no clone of this repository. The token stays last: DeviceSecretCommand
+ * slices it off the end to highlight it and to copy it on its own.
+ */
 export function setupCommand(otlpEndpoint: string, token: string): string {
-  return `./scripts/setup-device.sh --endpoint ${otlpEndpoint} --token ${token}`
+  return `curl -fsSL ${SETUP_SCRIPT_URL} | bash -s -- --endpoint ${otlpEndpoint} --token ${token}`
 }
 
 export function sortDevices(devices: DeviceInfo[]): DeviceInfo[] {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compareDevices, deviceNameSchema, parseDeviceId, toDeviceInfo } from '../server/utils/deviceQueries'
 import { accountConflictError, decideAccount, deviceStatus } from '../server/utils/deviceToken'
+import { TOKEN_PLACEHOLDER, setupCommand } from '../app/utils/deviceStatus'
 import type { DeviceInfo, DeviceStatus } from '../shared/types'
 
 const UUID = '9d5f5a3e-1c2b-4f7a-9e8d-6b7c8d9e0f1a'
@@ -201,5 +202,34 @@ describe('accountConflictError', () => {
     expect(body).not.toContain(OTHER_ACCOUNT)
     expect(body).toContain(CLAIMED_ACCOUNT.slice(0, 8))
     expect(body).toContain(OTHER_ACCOUNT.slice(0, 8))
+  })
+})
+
+describe('setupCommand', () => {
+  const ENDPOINT = 'https://example.vercel.app/api/otlp'
+  const TOKEN = 'b087b4a3a3a4919cbb9b410c3a86d51a'
+
+  it('needs no clone: it fetches the script over https and pipes it to bash', () => {
+    const command = setupCommand(ENDPOINT, TOKEN)
+
+    expect(command).toContain('curl -fsSL https://raw.githubusercontent.com/')
+    expect(command).toContain('| bash -s --')
+    expect(command).not.toContain('./scripts/')
+  })
+
+  it('carries both arguments through the pipe', () => {
+    const command = setupCommand(ENDPOINT, TOKEN)
+
+    expect(command).toContain(`--endpoint ${ENDPOINT}`)
+    expect(command).toContain(`--token ${TOKEN}`)
+  })
+
+  /**
+   * DeviceSecretCommand highlights and copies the token by slicing it off the
+   * end, so a command that ends in anything else silently loses that button.
+   */
+  it('ends with the token', () => {
+    expect(setupCommand(ENDPOINT, TOKEN).endsWith(TOKEN)).toBe(true)
+    expect(setupCommand(ENDPOINT, TOKEN_PLACEHOLDER).endsWith(TOKEN_PLACEHOLDER)).toBe(true)
   })
 })
