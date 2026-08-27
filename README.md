@@ -120,6 +120,25 @@ Claude Code sends no machine identifier of its own. There is no `host.name` and 
 device id on the wire, and `service.name` is the constant `claude-code`, so
 `OTEL_RESOURCE_ATTRIBUTES` is the only way to tell two machines apart.
 
+## It notices a new machine on its own
+
+You do not register machines anywhere. The first time telemetry arrives carrying a
+`device.name` the dashboard has never seen, that machine appears at the top of the
+page with the date it started reporting and a button to dismiss the notice. A
+machine stays new until you dismiss it, rather than for a fixed window, so one that
+first reports overnight is still waiting for you in the morning.
+
+A separate notice covers the case where telemetry arrives with no `device.name` at
+all. That traffic is filed under `unknown`, and every unnamed machine lands in the
+same row, so you cannot tell those machines apart. This notice names the setup
+command and does not offer to dismiss it, because nothing has been fixed until a
+named machine reports.
+
+`unknown` keeps its spending in every chart and in the summary table, since the
+money is real. It is left out of the machine-to-machine comparison and drawn in
+neutral grey rather than taking a machine colour, because telemetry with no device
+name cannot be attributed to a machine.
+
 ## What it stores, and what it does not
 
 Prompts and assistant responses arrive as the literal string `<REDACTED>`. Claude
