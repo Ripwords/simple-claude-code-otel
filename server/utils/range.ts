@@ -9,10 +9,15 @@ const HOURLY_BUCKET_LIMIT_MS = 3 * DAY_MS
 
 const timestamp = z.union([z.iso.datetime({ offset: true }), z.iso.date()])
 
+const deviceIds = z
+  .string()
+  .transform(raw => [...new Set(raw.split(',').map(id => id.trim()).filter(Boolean))])
+  .pipe(z.array(z.uuid()))
+
 const rangeSchema = z.object({
   from: timestamp.optional(),
   to: timestamp.optional(),
-  devices: z.string().optional()
+  devices: deviceIds.optional()
 })
 
 export interface ResolvedRange {
@@ -41,16 +46,10 @@ export function parseRange(event: H3Event): ResolvedRange {
   return {
     from: new Date(fromMs).toISOString(),
     to: new Date(toMs).toISOString(),
-    devices: parseDevices(devices)
+    devices: devices?.length ? devices : null
   }
 }
 
 export function defaultBucket(range: ResolvedRange): Bucket {
   return Date.parse(range.to) - Date.parse(range.from) < HOURLY_BUCKET_LIMIT_MS ? 'hour' : 'day'
-}
-
-function parseDevices(raw: string | undefined): string[] | null {
-  if (!raw) return null
-  const list = [...new Set(raw.split(',').map(device => device.trim()).filter(Boolean))]
-  return list.length > 0 ? list : null
 }
