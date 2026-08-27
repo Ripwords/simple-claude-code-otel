@@ -1,17 +1,17 @@
-import { buildDeviceUpserts, buildEventInserts, buildSessionUpserts, foldDevices, transformLogs, type OtlpLogsBody } from '../../../utils/otlp'
-import { requireBearer } from '../../../utils/ingestAuth'
+import { buildDeviceLivenessUpdate, buildEventInserts, buildSessionUpserts, transformLogs, type OtlpLogsBody } from '../../../utils/otlp'
+import { authenticateDevice } from '../../../utils/deviceToken'
 
 export default defineEventHandler(async (event) => {
-  requireBearer(event, useRuntimeConfig().ingestToken)
+  const device = await authenticateDevice(getRequestHeader(event, 'authorization'))
 
   const body = await readBody<OtlpLogsBody>(event)
-  const result = transformLogs(body)
+  const result = transformLogs(body, device.id)
   if (!result.ok) throw createError({ statusCode: 400, statusMessage: result.error })
 
   const statements = [
-    ...buildDeviceUpserts(foldDevices(result.rows)),
     ...buildSessionUpserts(result.sessions),
-    ...buildEventInserts(result.rows)
+    ...buildEventInserts(result.rows),
+    ...buildDeviceLivenessUpdate(device.id, result.rows)
   ]
   if (statements.length > 0) {
     const sql = db()

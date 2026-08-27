@@ -74,7 +74,7 @@ export interface OtlpLogsBody {
 export interface MetricRow {
   dedupeKey: string
   ts: Date
-  device: string
+  deviceId: string
   sessionId: string | null
   metric: string
   model: string | null
@@ -85,7 +85,7 @@ export interface MetricRow {
 export interface EventRow {
   dedupeKey: string
   ts: Date
-  device: string
+  deviceId: string
   sessionId: string | null
   name: string
   model: string | null
@@ -95,7 +95,7 @@ export interface EventRow {
 
 export interface SessionRow {
   sessionId: string
-  device: string
+  deviceId: string
   startedAt: Date
   lastSeenAt: Date
   attrs: AttrMap
@@ -156,12 +156,6 @@ export function attrsToMap(attrs: OtlpAttr[] | undefined): AttrMap {
   return map
 }
 
-export function resolveDevice(resourceAttrs: AttrMap, pointAttrs: AttrMap): string {
-  return nonEmptyString(resourceAttrs['device.name'])
-    ?? nonEmptyString(pointAttrs['device.name'])
-    ?? 'unknown'
-}
-
 export function nanosToDate(nanos: string | number): Date {
   const digits = String(nanos)
   if (!/^\d+$/.test(digits)) return new Date(Number(nanos) / 1e6)
@@ -173,7 +167,7 @@ export function dedupeKey(parts: string[]): string {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join('-')
 }
 
-export function transformMetrics(body: OtlpMetricsBody): TransformResult<MetricRow> {
+export function transformMetrics(body: OtlpMetricsBody, deviceId: string): TransformResult<MetricRow> {
   const rows: MetricRow[] = []
   const sessions = new Map<string, SessionRow>()
 
@@ -197,7 +191,6 @@ export function transformMetrics(body: OtlpMetricsBody): TransformResult<MetricR
 
         for (const point of sum.dataPoints ?? []) {
           const pointAttrs = attrsToMap(point.attributes)
-          const device = resolveDevice(resourceAttrs, pointAttrs)
           const ts = nanosToDate(point.timeUnixNano ?? 0)
           const sessionId = stringAttr(pointAttrs, 'session.id')
 
@@ -206,11 +199,11 @@ export function transformMetrics(body: OtlpMetricsBody): TransformResult<MetricR
               name,
               String(point.startTimeUnixNano ?? ''),
               String(point.timeUnixNano ?? ''),
-              device,
+              deviceId,
               sortedPairs(pointAttrs)
             ]),
             ts,
-            device,
+            deviceId,
             sessionId,
             metric: name,
             model: stringAttr(pointAttrs, 'model'),
@@ -218,7 +211,7 @@ export function transformMetrics(body: OtlpMetricsBody): TransformResult<MetricR
             attrs: stripKeys(pointAttrs, METRIC_STRIPPED_KEYS)
           })
 
-          accumulateSession(sessions, sessionId, device, ts, pointAttrs, resourceAttrs)
+          accumulateSession(sessions, sessionId, deviceId, ts, pointAttrs, resourceAttrs)
         }
       }
     }
@@ -227,7 +220,7 @@ export function transformMetrics(body: OtlpMetricsBody): TransformResult<MetricR
   return { ok: true, rows, sessions: [...sessions.values()] }
 }
 
-export function transformLogs(body: OtlpLogsBody): TransformResult<EventRow> {
+export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformResult<EventRow> {
   const rows: EventRow[] = []
   const sessions = new Map<string, SessionRow>()
 
@@ -240,7 +233,6 @@ export function transformLogs(body: OtlpLogsBody): TransformResult<EventRow> {
         if (!name) continue
 
         const recordAttrs = attrsToMap(record.attributes)
-        const device = resolveDevice(resourceAttrs, recordAttrs)
         const ts = nanosToDate(record.timeUnixNano ?? 0)
         const sessionId = stringAttr(recordAttrs, 'session.id')
 
@@ -248,11 +240,11 @@ export function transformLogs(body: OtlpLogsBody): TransformResult<EventRow> {
           dedupeKey: dedupeKey([
             name,
             String(record.timeUnixNano ?? ''),
-            device,
+            deviceId,
             sortedPairs(recordAttrs)
           ]),
           ts,
-          device,
+          deviceId,
           sessionId,
           name,
           model: stringAttr(recordAttrs, 'model'),
@@ -260,7 +252,7 @@ export function transformLogs(body: OtlpLogsBody): TransformResult<EventRow> {
           attrs: stripKeys(recordAttrs, EVENT_STRIPPED_KEYS)
         })
 
-        accumulateSession(sessions, sessionId, device, ts, recordAttrs, resourceAttrs)
+        accumulateSession(sessions, sessionId, deviceId, ts, recordAttrs, resourceAttrs)
       }
     }
   }
@@ -273,11 +265,11 @@ export function buildMetricInserts(rows: MetricRow[]): Statement[] {
     const params: unknown[] = []
     const tuples = batch.map((row) => {
       const n = params.length
-      params.push(row.dedupeKey, row.ts.toISOString(), row.device, row.sessionId, row.metric, row.model, row.value, JSON.stringify(row.attrs))
-      return `($${n + 1}, $${n + 2}::timestamptz, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, $${n + 8}::jsonb)`
+      params.push(row.dedupeKey, row.ts.toISOString(), row.deviceId, row.sessionId, row.metric, row.model, row.value, JSON.stringify(row.attrs))
+      return `($${n + 1}, $${n + 2}::timestamptz, $${n + 3}::uuid, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, $${n + 8}::jsonb)`
     })
     return {
-      text: `insert into telemetry.metric_point (dedupe_key, ts, device, session_id, metric, model, value, attrs) values ${tuples.join(', ')} on conflict (dedupe_key) do nothing`,
+      text: `insert into telemetry.metric_point (dedupe_key, ts, device_id, session_id, metric, model, value, attrs) values ${tuples.join(', ')} on conflict (dedupe_key) do nothing`,
       params
     }
   })
@@ -288,11 +280,11 @@ export function buildEventInserts(rows: EventRow[]): Statement[] {
     const params: unknown[] = []
     const tuples = batch.map((row) => {
       const n = params.length
-      params.push(row.dedupeKey, row.ts.toISOString(), row.device, row.sessionId, row.name, row.model, row.durationMs, JSON.stringify(row.attrs))
-      return `($${n + 1}, $${n + 2}::timestamptz, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, $${n + 8}::jsonb)`
+      params.push(row.dedupeKey, row.ts.toISOString(), row.deviceId, row.sessionId, row.name, row.model, row.durationMs, JSON.stringify(row.attrs))
+      return `($${n + 1}, $${n + 2}::timestamptz, $${n + 3}::uuid, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, $${n + 8}::jsonb)`
     })
     return {
-      text: `insert into telemetry.event (dedupe_key, ts, device, session_id, name, model, duration_ms, attrs) values ${tuples.join(', ')} on conflict (dedupe_key) do nothing`,
+      text: `insert into telemetry.event (dedupe_key, ts, device_id, session_id, name, model, duration_ms, attrs) values ${tuples.join(', ')} on conflict (dedupe_key) do nothing`,
       params
     }
   })
@@ -303,11 +295,11 @@ export function buildSessionUpserts(sessions: SessionRow[]): Statement[] {
     const params: unknown[] = []
     const tuples = batch.map((row) => {
       const n = params.length
-      params.push(row.sessionId, row.device, row.startedAt.toISOString(), row.lastSeenAt.toISOString(), JSON.stringify(row.attrs))
-      return `($${n + 1}, $${n + 2}, $${n + 3}::timestamptz, $${n + 4}::timestamptz, $${n + 5}::jsonb)`
+      params.push(row.sessionId, row.deviceId, row.startedAt.toISOString(), row.lastSeenAt.toISOString(), JSON.stringify(row.attrs))
+      return `($${n + 1}, $${n + 2}::uuid, $${n + 3}::timestamptz, $${n + 4}::timestamptz, $${n + 5}::jsonb)`
     })
     return {
-      text: `insert into telemetry.session (session_id, device, started_at, last_seen_at, attrs) values ${tuples.join(', ')} `
+      text: `insert into telemetry.session (session_id, device_id, started_at, last_seen_at, attrs) values ${tuples.join(', ')} `
         + 'on conflict (session_id) do update set '
         + 'last_seen_at = greatest(telemetry.session.last_seen_at, excluded.last_seen_at), '
         + 'started_at = least(telemetry.session.started_at, excluded.started_at), '
@@ -320,7 +312,7 @@ export function buildSessionUpserts(sessions: SessionRow[]): Statement[] {
 function accumulateSession(
   sessions: Map<string, SessionRow>,
   sessionId: string | null,
-  device: string,
+  deviceId: string,
   ts: Date,
   pointAttrs: AttrMap,
   resourceAttrs: AttrMap
@@ -334,17 +326,13 @@ function accumulateSession(
 
   const existing = sessions.get(sessionId)
   if (!existing) {
-    sessions.set(sessionId, { sessionId, device, startedAt: ts, lastSeenAt: ts, attrs })
+    sessions.set(sessionId, { sessionId, deviceId, startedAt: ts, lastSeenAt: ts, attrs })
     return
   }
 
   if (ts < existing.startedAt) existing.startedAt = ts
   if (ts > existing.lastSeenAt) existing.lastSeenAt = ts
   Object.assign(existing.attrs, attrs)
-}
-
-function nonEmptyString(value: AttrScalar | undefined): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function stringAttr(attrs: AttrMap, key: string): string | null {
@@ -390,35 +378,25 @@ function chunk<T>(rows: T[]): T[][] {
   return chunks
 }
 
-export interface DeviceRow {
-  device: string
-  firstSeen: Date
-}
+// Ingest never creates a device; the row already exists or the request was 401. `least`/`greatest`
+// over the stored value make the write idempotent under replay and correct for out-of-order batches,
+// which matters because the null-to-set transition of first_seen is what announces a provisioned
+// machine as reporting.
+export function buildDeviceLivenessUpdate(deviceId: string, rows: readonly { ts: Date }[]): Statement[] {
+  if (rows.length === 0) return []
 
-export function foldDevices(rows: readonly { device: string, ts: Date }[]): DeviceRow[] {
-  const devices = new Map<string, DeviceRow>()
+  let earliest = rows[0]!.ts
+  let latest = rows[0]!.ts
   for (const row of rows) {
-    const existing = devices.get(row.device)
-    if (!existing) devices.set(row.device, { device: row.device, firstSeen: row.ts })
-    else if (row.ts < existing.firstSeen) existing.firstSeen = row.ts
+    if (row.ts < earliest) earliest = row.ts
+    if (row.ts > latest) latest = row.ts
   }
-  // Sorted so concurrent batches take the upsert row locks in the same order and cannot deadlock.
-  return [...devices.values()].sort((a, b) => a.device.localeCompare(b.device))
-}
 
-export function buildDeviceUpserts(devices: DeviceRow[]): Statement[] {
-  return chunk(devices).map((batch) => {
-    const params: unknown[] = []
-    const tuples = batch.map((row) => {
-      const n = params.length
-      params.push(row.device, row.firstSeen.toISOString())
-      return `($${n + 1}, $${n + 2}::timestamptz)`
-    })
-    return {
-      text: `insert into telemetry.device (device, first_seen) values ${tuples.join(', ')} `
-        + 'on conflict (device) do update set '
-        + 'first_seen = least(telemetry.device.first_seen, excluded.first_seen)',
-      params
-    }
-  })
+  return [{
+    text: 'update telemetry.device set '
+      + 'first_seen = least(coalesce(first_seen, $2::timestamptz), $2::timestamptz), '
+      + 'last_seen_at = greatest(coalesce(last_seen_at, $3::timestamptz), $3::timestamptz) '
+      + 'where id = $1::uuid',
+    params: [deviceId, earliest.toISOString(), latest.toISOString()]
+  }]
 }
