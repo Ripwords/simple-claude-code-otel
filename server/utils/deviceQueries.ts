@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import type { DeviceInfo, DeviceSecret, DeviceStatus } from '../../shared/types'
+import type { DeviceCascade, DeviceInfo, DeviceSecret, DeviceStatus } from '../../shared/types'
 import { deviceStatus, mintToken } from './deviceToken'
 import { db } from './db'
 
@@ -8,12 +8,6 @@ const UNIQUE_VIOLATION = '23505'
 
 const DEVICE_COLUMNS = `d.id, d.name, d.token_prefix, d.created_at, d.first_seen, d.last_seen_at, d.revoked_at,
   (select count(*) from telemetry.session s where s.device_id = d.id) as sessions`
-
-export interface DeviceCascade {
-  sessions: number
-  metricPoints: number
-  events: number
-}
 
 export const deviceNameSchema = z.string().trim().min(1).max(64)
 
@@ -36,14 +30,17 @@ export function parseDeviceId(raw: string | undefined): string {
 }
 
 export function toDeviceInfo(row: Record<string, unknown>): DeviceInfo {
+  const firstSeen = timestamp(row.first_seen)
+  const revokedAt = timestamp(row.revoked_at)
   return {
     id: String(row.id),
     name: String(row.name),
     tokenPrefix: String(row.token_prefix),
-    status: deviceStatus(timestamp(row.first_seen), timestamp(row.revoked_at)),
+    status: deviceStatus(firstSeen, revokedAt),
     createdAt: new Date(String(row.created_at)).toISOString(),
-    firstSeen: timestamp(row.first_seen),
+    firstSeen,
     lastSeen: timestamp(row.last_seen_at),
+    revokedAt,
     sessions: Number(row.sessions ?? 0)
   }
 }

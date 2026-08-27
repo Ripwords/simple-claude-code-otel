@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareDevices, deviceNameSchema, parseDeviceId } from '../server/utils/deviceQueries'
+import { compareDevices, deviceNameSchema, parseDeviceId, toDeviceInfo } from '../server/utils/deviceQueries'
 import { deviceStatus } from '../server/utils/deviceToken'
 import type { DeviceInfo, DeviceStatus } from '../shared/types'
 
@@ -15,6 +15,7 @@ function device(name: string, status: DeviceStatus): DeviceInfo {
     createdAt: '2026-01-01T00:00:00.000Z',
     firstSeen: null,
     lastSeen: null,
+    revokedAt: null,
     sessions: 0
   }
 }
@@ -93,5 +94,38 @@ describe('compareDevices', () => {
   it('ranks status above name', () => {
     const sorted = [device('alpha', 'revoked'), device('zeta', 'pending')].sort(compareDevices)
     expect(sorted.map(d => d.name)).toEqual(['zeta', 'alpha'])
+  })
+})
+
+describe('toDeviceInfo', () => {
+  const row = {
+    id: UUID,
+    name: 'Work MacBook',
+    token_prefix: 'abcd1234',
+    created_at: '2026-01-01T00:00:00Z',
+    first_seen: null,
+    last_seen_at: null,
+    revoked_at: null,
+    sessions: '0'
+  }
+
+  it('leaves revokedAt null while a device is live', () => {
+    expect(toDeviceInfo(row)).toMatchObject({ status: 'pending', revokedAt: null })
+  })
+
+  it('surfaces revokedAt so a preserved revocation timestamp is observable', () => {
+    const revoked = toDeviceInfo({ ...row, revoked_at: '2026-01-02T03:04:05.678Z' })
+    expect(revoked.status).toBe('revoked')
+    expect(revoked.revokedAt).toBe('2026-01-02T03:04:05.678Z')
+  })
+
+  it('coerces the session count the neon driver returns as a string', () => {
+    expect(toDeviceInfo({ ...row, sessions: '7' }).sessions).toBe(7)
+  })
+
+  it('never carries a token or its hash', () => {
+    const info = toDeviceInfo({ ...row, token_hash: 'deadbeef' }) as Record<string, unknown>
+    expect(info.token_hash).toBeUndefined()
+    expect(info.token).toBeUndefined()
   })
 })
