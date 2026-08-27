@@ -122,6 +122,25 @@ The script only writes this:
 }
 ```
 
+## A machine reports for one account only
+
+Telemetry lives in `~/.claude/settings.json`, which belongs to the machine rather
+than to a Claude Code account. So signing out and signing into a different account
+on that laptop would otherwise keep it reporting, and the second account's spend
+would land in the first account's numbers with nothing on screen saying so.
+
+A token claims the first Claude Code account that uses it and refuses every other
+one afterwards. The first telemetry binds the machine; the dashboard then shows
+which account it belongs to. Telemetry from any other account is rejected with a
+403, nothing from that batch is stored, and the attempt is recorded so the machine
+page can tell you why the machine went quiet instead of leaving you to guess.
+
+One refused batch never locks out the rightful account. Sign back in on that
+machine and it keeps reporting.
+
+To hand a machine to a different account on purpose, release the binding on the
+machines page. The next telemetry claims it afresh.
+
 ## Managing machines
 
 Renaming a machine keeps its whole history, because the name is a label rather than
@@ -135,6 +154,9 @@ Its spend still appears in every chart, because the money was real.
 
 Deleting a machine destroys all of its telemetry. That one cascades and does not come
 back.
+
+Releasing a machine clears which Claude Code account it is bound to, so the next
+telemetry binds it again. No data is lost.
 
 ## What it stores, and what it does not
 
@@ -166,6 +188,16 @@ bun run lint
 bun run typecheck
 bun run test
 ```
+
+Two checks drive a running server end to end rather than mocking it. Both create
+what they need and delete it afterwards.
+
+```sh
+DASHBOARD_PASSWORD=... bun run verify:lifecycle
+DASHBOARD_PASSWORD=... bun run verify:account
+```
+
+Point either at the deployment instead of localhost with `BASE_URL=https://...`.
 
 ## Design notes
 
