@@ -31,7 +31,15 @@ export interface DeviceInfo {
   createdAt: string
   firstSeen: string | null
   lastSeen: string | null
+  revokedAt: string | null
   sessions: number
+}
+
+// What a delete destroyed, via the cascade from telemetry.device.
+export interface DeviceCascade {
+  sessions: number
+  metricPoints: number
+  events: number
 }
 
 // The plaintext token exists in exactly one response and is never stored or
