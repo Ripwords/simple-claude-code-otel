@@ -9,8 +9,9 @@ const blocks = computed(() => MEASURE_GROUPS.map(group => ({
   ...group,
   measures: measuresIn(group.id).map((measure) => {
     const entries = props.summaries.map(summary => ({
+      deviceId: summary.deviceId,
       device: summary.device,
-      color: colorFor(summary.device),
+      color: colorFor(summary.deviceId),
       raw: measure.of(summary),
       text: measure.display(measure.of(summary))
     }))
@@ -59,7 +60,7 @@ const blocks = computed(() => MEASURE_GROUPS.map(group => ({
           <dl class="rows">
             <div
               v-for="entry in measure.entries"
-              :key="entry.device"
+              :key="entry.deviceId"
               class="row"
             >
               <dt class="viz-mono device">

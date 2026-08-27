@@ -20,6 +20,16 @@ useSeoMeta({
   ogTitle: title,
   ogDescription: description
 })
+
+const route = useRoute()
+const { signOut } = useAuth()
+
+const NAV = [
+  { to: '/', label: 'dashboard' },
+  { to: '/devices', label: 'machines' }
+]
+
+const gated = computed(() => route.path === '/login')
 </script>
 
 <template>
@@ -34,7 +44,35 @@ useSeoMeta({
             claude-code<span class="wordmark-dim">/</span>telemetry
           </NuxtLink>
 
-          <UColorModeButton />
+          <nav
+            v-if="!gated"
+            class="nav"
+            aria-label="Sections"
+          >
+            <NuxtLink
+              v-for="link in NAV"
+              :key="link.to"
+              :to="link.to"
+              class="nav-link viz-mono viz-focus"
+              :class="{ 'is-active': route.path === link.to }"
+              :aria-current="route.path === link.to ? 'page' : undefined"
+            >
+              {{ link.label }}
+            </NuxtLink>
+          </nav>
+
+          <div class="controls">
+            <button
+              v-if="!gated"
+              type="button"
+              class="signout viz-mono viz-focus"
+              @click="signOut()"
+            >
+              sign out
+            </button>
+
+            <UColorModeButton />
+          </div>
         </header>
 
         <main>
@@ -64,9 +102,9 @@ useSeoMeta({
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 4px 16px;
   padding: 18px 0 20px;
 }
 
@@ -79,5 +117,59 @@ useSeoMeta({
 
 .wordmark-dim {
   color: var(--viz-muted);
+}
+
+/* Full-width on its own row until there is room beside the wordmark, so the
+   topbar never overflows on a narrow phone. */
+.nav {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  gap: 2px;
+  margin-left: -10px;
+}
+
+.nav-link {
+  padding: 5px 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--viz-muted);
+  font-size: 12px;
+}
+
+.nav-link:hover {
+  color: var(--viz-ink);
+}
+
+.nav-link.is-active {
+  color: var(--viz-ink);
+  border-bottom-color: var(--viz-ink);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.signout {
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--viz-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.signout:hover {
+  color: var(--viz-ink);
+}
+
+@media (width >= 620px) {
+  .nav {
+    order: 0;
+    flex-basis: auto;
+    margin-left: 12px;
+  }
 }
 </style>

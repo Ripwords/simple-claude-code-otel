@@ -10,7 +10,7 @@ const right = computed(() => props.summaries[1]!)
 
 const sides = computed(() => [left.value, right.value].map(summary => ({
   device: summary.device,
-  color: colorFor(summary.device)
+  color: colorFor(summary.deviceId)
 })))
 
 const groups = computed(() => MEASURE_GROUPS.map(group => ({
@@ -29,8 +29,8 @@ const groups = computed(() => MEASURE_GROUPS.map(group => ({
       dominant: split?.dominant ?? null,
       extent: split ? Math.abs(split.share - 0.5) * 100 : 0,
       color: split?.dominant === 'left'
-        ? colorFor(left.value.device)
-        : split?.dominant === 'right' ? colorFor(right.value.device) : 'var(--viz-baseline)'
+        ? colorFor(left.value.deviceId)
+        : split?.dominant === 'right' ? colorFor(right.value.deviceId) : 'var(--viz-baseline)'
     }
   })
 })))

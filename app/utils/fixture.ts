@@ -1,7 +1,18 @@
 import type { BreakdownRow, DeviceInfo, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
-import { UNLABELLED_DEVICE } from '#shared/types'
 
-const DEVICES = ['personal-mac', 'work-mac'] as const
+const WORK = '1a7c3e58-9d24-4b61-8f03-2c5e7a9b1d40'
+const PERSONAL = '4b2f9d61-7e08-4a35-92c7-6d1b3f8e0a52'
+const PENDING = '8c5e1a37-2b96-4d70-a41f-9e07c2b5d863'
+const REVOKED = 'd0e4b872-5f13-4c29-b6a8-3a71e9d4c015'
+
+const NAMES: Record<string, string> = {
+  [WORK]: 'work-mac',
+  [PERSONAL]: 'personal-mac',
+  [PENDING]: 'build-box',
+  [REVOKED]: 'old-laptop'
+}
+
+const REPORTING = [WORK, PERSONAL]
 
 function seeded(seed: number): () => number {
   let state = seed
@@ -12,38 +23,56 @@ function seeded(seed: number): () => number {
 }
 
 /**
- * Covers all three onboarding states at once, so the notices, the two-device
- * spine, and the unlabelled warning can all be built without waiting on real
- * telemetry from a third machine.
+ * Covers all three lifecycle states at once, so the roster, the pending setup
+ * prompt and the revoked treatment can all be built before the devices API
+ * lands. Only the two reporting machines carry telemetry, which keeps the
+ * default fixture view on the two-machine spine.
  */
 export function fixtureDevices(): DeviceInfo[] {
   return [
     {
-      device: 'work-mac',
+      id: WORK,
+      name: 'work-mac',
+      tokenPrefix: '7f2a91c4',
+      status: 'reporting',
+      createdAt: '2026-06-02T09:02:00.000Z',
       firstSeen: '2026-06-02T09:14:00.000Z',
       lastSeen: '2026-08-27T08:51:00.000Z',
-      sessions: 412,
-      acknowledgedAt: '2026-06-02T09:40:00.000Z',
-      isNew: false,
-      isUnlabelled: false
+      revokedAt: null,
+      sessions: 412
     },
     {
-      device: 'personal-mac',
+      id: PERSONAL,
+      name: 'personal-mac',
+      tokenPrefix: 'c481d02e',
+      status: 'reporting',
+      createdAt: '2026-08-26T18:55:00.000Z',
       firstSeen: '2026-08-26T19:02:00.000Z',
       lastSeen: '2026-08-26T23:40:00.000Z',
-      sessions: 12,
-      acknowledgedAt: null,
-      isNew: true,
-      isUnlabelled: false
+      revokedAt: null,
+      sessions: 12
     },
     {
-      device: UNLABELLED_DEVICE,
-      firstSeen: '2026-08-25T11:20:00.000Z',
-      lastSeen: '2026-08-27T07:05:00.000Z',
-      sessions: 4,
-      acknowledgedAt: null,
-      isNew: true,
-      isUnlabelled: true
+      id: PENDING,
+      name: 'build-box',
+      tokenPrefix: '19be5a77',
+      status: 'pending',
+      createdAt: '2026-08-27T07:40:00.000Z',
+      firstSeen: null,
+      lastSeen: null,
+      revokedAt: null,
+      sessions: 0
+    },
+    {
+      id: REVOKED,
+      name: 'old-laptop',
+      tokenPrefix: 'a305f6b1',
+      status: 'revoked',
+      createdAt: '2026-03-11T10:20:00.000Z',
+      firstSeen: '2026-03-11T10:33:00.000Z',
+      lastSeen: '2026-07-19T16:04:00.000Z',
+      revokedAt: '2026-07-20T09:12:00.000Z',
+      sessions: 87
     }
   ]
 }
@@ -51,6 +80,7 @@ export function fixtureDevices(): DeviceInfo[] {
 export function fixtureSummary(devices: string[]): DeviceSummary[] {
   const rows: DeviceSummary[] = [
     {
+      deviceId: WORK,
       device: 'work-mac',
       costUsd: 184.32,
       inputTokens: 2_140_000,
@@ -71,6 +101,7 @@ export function fixtureSummary(devices: string[]): DeviceSummary[] {
       p95ApiMs: 9400
     },
     {
+      deviceId: PERSONAL,
       device: 'personal-mac',
       costUsd: 47.86,
       inputTokens: 610_000,
@@ -91,7 +122,7 @@ export function fixtureSummary(devices: string[]): DeviceSummary[] {
       p95ApiMs: 7600
     }
   ]
-  return rows.filter(row => devices.length === 0 || devices.includes(row.device))
+  return rows.filter(row => devices.length === 0 || devices.includes(row.deviceId))
 }
 
 export function fixtureTimeseries(devices: string[], metric: MetricKey, bucket: 'hour' | 'day'): SeriesPoint[] {
@@ -102,17 +133,18 @@ export function fixtureTimeseries(devices: string[], metric: MetricKey, bucket: 
   const base = scale[metric]
   const points: SeriesPoint[] = []
 
-  for (const device of DEVICES) {
-    if (devices.length > 0 && !devices.includes(device)) continue
-    const random = seeded(device === 'work-mac' ? 7 : 23)
-    const weight = device === 'work-mac' ? 1 : 0.34
+  for (const deviceId of REPORTING) {
+    if (devices.length > 0 && !devices.includes(deviceId)) continue
+    const random = seeded(deviceId === WORK ? 7 : 23)
+    const weight = deviceId === WORK ? 1 : 0.34
     for (let i = steps - 1; i >= 0; i--) {
       const at = new Date(end - i * stepMs)
       const weekday = at.getDay() !== 0 && at.getDay() !== 6
-      const dayFactor = device === 'work-mac' ? (weekday ? 1 : 0.15) : (weekday ? 0.5 : 1.4)
+      const dayFactor = deviceId === WORK ? (weekday ? 1 : 0.15) : (weekday ? 0.5 : 1.4)
       points.push({
         bucket: at.toISOString(),
-        device,
+        deviceId,
+        device: NAMES[deviceId]!,
         value: Number((base * weight * dayFactor * (0.55 + random() * 0.9)).toFixed(metric === 'cost' ? 2 : 0))
       })
     }
@@ -140,11 +172,11 @@ export function fixtureBreakdown(devices: string[], by: string): BreakdownRow[] 
   const keys = BREAKDOWN_KEYS[by] ?? []
   const total = BREAKDOWN_TOTALS[by] ?? 100
   const rows: BreakdownRow[] = []
-  for (const device of DEVICES) {
-    if (devices.length > 0 && !devices.includes(device)) continue
-    const share = device === 'work-mac' ? 0.79 : 0.21
+  for (const deviceId of REPORTING) {
+    if (devices.length > 0 && !devices.includes(deviceId)) continue
+    const share = deviceId === WORK ? 0.79 : 0.21
     for (const [key, fraction] of keys) {
-      rows.push({ device, key, value: Number((total * share * fraction).toFixed(by === 'model' ? 2 : 0)) })
+      rows.push({ deviceId, device: NAMES[deviceId]!, key, value: Number((total * share * fraction).toFixed(by === 'model' ? 2 : 0)) })
     }
   }
   return rows

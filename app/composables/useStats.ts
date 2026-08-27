@@ -1,4 +1,4 @@
-import type { Bucket, BreakdownRow, DeviceInfo, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
+import type { Bucket, BreakdownRow, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
 
 export type BreakdownDimension = 'model' | 'toolName' | 'tokenType' | 'editDecision' | 'errorStatus'
 
@@ -12,37 +12,15 @@ export interface RangeParams {
   devices?: string
 }
 
-type FixtureMode = 'off' | 'data' | 'empty'
-
-function useFixtureMode() {
-  const route = useRoute()
-  return computed<FixtureMode>(() => {
-    if (!import.meta.dev || route.query.fixture === undefined) return 'off'
-    return route.query.fixture === 'empty' ? 'empty' : 'data'
-  })
-}
-
-export function useDevices() {
-  const fixture = useFixtureMode()
-  return useAsyncData<DeviceInfo[]>(
-    'stats:devices',
-    () => {
-      if (fixture.value === 'empty') return Promise.resolve([])
-      if (fixture.value === 'data') return Promise.resolve(fixtureDevices())
-      return $fetch<DeviceInfo[]>('/api/stats/devices')
-    },
-    { default: () => [], watch: [fixture] }
-  )
-}
-
 export function useSummary(params: Ref<RangeParams>) {
   const fixture = useFixtureMode()
+  const request = useRequestFetch()
   return useAsyncData<DeviceSummary[]>(
     'stats:summary',
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
       if (fixture.value === 'data') return Promise.resolve(fixtureSummary(splitDevices(params.value.devices)))
-      return $fetch<DeviceSummary[]>('/api/stats/summary', { query: params.value })
+      return request<DeviceSummary[]>('/api/stats/summary', { query: params.value })
     },
     { default: () => [], watch: [params, fixture] }
   )
@@ -50,12 +28,13 @@ export function useSummary(params: Ref<RangeParams>) {
 
 export function useTimeseries(params: Ref<RangeParams>, metric: MetricKey, bucket: Ref<Bucket>) {
   const fixture = useFixtureMode()
+  const request = useRequestFetch()
   return useAsyncData<SeriesPoint[]>(
     `stats:timeseries:${metric}`,
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
       if (fixture.value === 'data') return Promise.resolve(fixtureTimeseries(splitDevices(params.value.devices), metric, bucket.value))
-      return $fetch<SeriesPoint[]>('/api/stats/timeseries', { query: { ...params.value, metric, bucket: bucket.value } })
+      return request<SeriesPoint[]>('/api/stats/timeseries', { query: { ...params.value, metric, bucket: bucket.value } })
     },
     { default: () => [], watch: [params, bucket, fixture] }
   )
@@ -63,12 +42,13 @@ export function useTimeseries(params: Ref<RangeParams>, metric: MetricKey, bucke
 
 export function useBreakdown(params: Ref<RangeParams>, by: BreakdownDimension) {
   const fixture = useFixtureMode()
+  const request = useRequestFetch()
   return useAsyncData<BreakdownRow[]>(
     `stats:breakdown:${by}`,
     () => {
       if (fixture.value === 'empty') return Promise.resolve([])
       if (fixture.value === 'data') return Promise.resolve(fixtureBreakdown(splitDevices(params.value.devices), by))
-      return $fetch<BreakdownRow[]>('/api/stats/breakdown', { query: { ...params.value, by } })
+      return request<BreakdownRow[]>('/api/stats/breakdown', { query: { ...params.value, by } })
     },
     { default: () => [], watch: [params, fixture] }
   )

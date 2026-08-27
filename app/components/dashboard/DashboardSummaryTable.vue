@@ -36,8 +36,9 @@ const COLUMNS: Column[] = [
 ]
 
 const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeCompare(b.device)).map(summary => ({
+  deviceId: summary.deviceId,
   device: summary.device,
-  color: colorFor(summary.device),
+  color: colorFor(summary.deviceId),
   cells: COLUMNS.map(column => ({ key: column.key, value: column.of(summary) }))
 })))
 </script>
@@ -69,7 +70,7 @@ const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeC
       <tbody>
         <tr
           v-for="row in rows"
-          :key="row.device"
+          :key="row.deviceId"
         >
           <th
             scope="row"

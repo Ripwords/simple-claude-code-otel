@@ -11,7 +11,7 @@ defineProps<Props>()
     v-if="pending"
     class="waiting viz-mono"
   >
-    Looking for telemetry…
+    Looking for machines…
   </div>
 
   <div
@@ -19,34 +19,39 @@ defineProps<Props>()
     class="empty"
   >
     <p class="viz-eyebrow">
-      Nothing reporting yet
+      No machines yet
     </p>
 
     <h2 class="headline">
-      Point a machine at this dashboard and it appears here
+      Add a machine here, then point it at this dashboard
     </h2>
 
     <ol class="steps">
       <li class="viz-prose">
-        On the machine you want to track, run
-        <span class="viz-code">scripts/setup-device.sh --device &lt;name&gt;</span>.
-        The name is what tells your machines apart on every screen here, so give each one
-        its own.
+        <p class="step-text">
+          Add your first machine. Give it a name you will recognise, because that name is what
+          tells your machines apart on every screen here.
+        </p>
+        <NuxtLink
+          to="/devices"
+          class="primary viz-mono viz-focus"
+        >
+          Add a machine
+        </NuxtLink>
       </li>
       <li class="viz-prose">
-        Start Claude Code and work for a minute. Telemetry is batched, so the first numbers
-        take a moment.
+        The dashboard hands you a token and the exact command to run on that machine. The token
+        is shown once and never again, so run the command before you close it.
       </li>
       <li class="viz-prose">
-        Repeat on your second machine. Two machines is when this page earns its keep: it is
+        Start Claude Code on that machine and work for a minute. Telemetry is batched, so the
+        first numbers take a moment to land.
+      </li>
+      <li class="viz-prose">
+        Repeat on a second machine. Two is when the comparison earns its keep: this page is
         built to show you the gap between them.
       </li>
     </ol>
-
-    <p class="viz-prose">
-      The setup script writes <span class="viz-code">~/.claude/settings.json</span>. The exact
-      block it writes, and how to write it by hand, is in <span class="viz-code">README.md</span>.
-    </p>
   </div>
 </template>
 
@@ -93,5 +98,25 @@ defineProps<Props>()
   font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   font-size: 11px;
   color: var(--viz-muted);
+}
+
+.step-text {
+  margin: 0;
+}
+
+.primary {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 8px 18px;
+  border: 1px solid var(--viz-ink);
+  background: var(--viz-ink);
+  color: var(--viz-surface);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.primary:hover {
+  background: transparent;
+  color: var(--viz-ink);
 }
 </style>

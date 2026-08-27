@@ -5,7 +5,7 @@ const props = defineProps<{ summary: DeviceSummary }>()
 
 const { colorFor } = useDeviceColors()
 
-const color = computed(() => colorFor(props.summary.device))
+const color = computed(() => colorFor(props.summary.deviceId))
 
 const groups = computed(() => MEASURE_GROUPS.map(group => ({
   ...group,

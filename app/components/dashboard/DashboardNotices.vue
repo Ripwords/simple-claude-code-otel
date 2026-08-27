@@ -1,80 +1,130 @@
 <script setup lang="ts">
-const { arrivals, unlabelled, acknowledge, pendingDevice, failures } = useDeviceOnboarding()
+const STORAGE_KEY = 'cct:announced-devices'
+const RECENT_MS = 86_400_000
+
+interface Arrival {
+  id: string
+  name: string
+  firstSeen: string
+  sessions: number
+}
+
+const { data: devices } = useDevices()
 const { colorFor } = useDeviceColors()
+
+// There is no server-side acknowledged flag, so "announced once" lives here. It
+// is read after mount only, so the server and client renders agree.
+const announced = ref<string[]>([])
+const ready = ref(false)
+
+function readAnnounced(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const parsed: unknown = raw === null ? null : JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeAnnounced(ids: string[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+  } catch {
+    // Private mode and a blocked store both throw. The notice still goes away
+    // for this page view, it just comes back on the next load.
+  }
+}
+
+onMounted(() => {
+  announced.value = readAnnounced()
+  ready.value = true
+})
+
+const arrivals = computed<Arrival[]>(() => {
+  if (!ready.value) return []
+  const now = Date.now()
+
+  return (devices.value ?? []).flatMap<Arrival>((device) => {
+    if (device.status !== 'reporting' || device.firstSeen === null) return []
+    if (now - Date.parse(device.firstSeen) >= RECENT_MS) return []
+    if (announced.value.includes(device.id)) return []
+    return [{ id: device.id, name: device.name, firstSeen: device.firstSeen, sessions: device.sessions }]
+  })
+})
+
+const waiting = computed(() => (devices.value ?? []).filter(device => device.status === 'pending'))
+
+function dismiss(id: string) {
+  const next = [...announced.value, id]
+  announced.value = next
+  writeAnnounced(next)
+}
 </script>
 
 <template>
   <div
-    v-if="arrivals.length > 0 || unlabelled.length > 0"
+    v-if="arrivals.length > 0 || waiting.length > 0"
     class="notices"
   >
     <section
       v-for="device in arrivals"
-      :key="`new-${device.device}`"
+      :key="`reporting-${device.id}`"
       class="notice"
     >
       <p class="viz-eyebrow">
-        New machine
+        Setup confirmed
       </p>
 
       <h2 class="headline">
         <span
           class="dot"
-          :style="{ backgroundColor: colorFor(device.device) }"
+          :style="{ backgroundColor: colorFor(device.id) }"
         />
-        <span class="viz-mono">{{ device.device }}</span>
-        <span class="headline-rest">started reporting</span>
+        <span class="viz-mono">{{ device.name }}</span>
+        <span class="headline-rest">has started reporting</span>
       </h2>
 
       <p class="viz-prose">
-        First seen <span class="viz-mono">{{ formatStamp(device.firstSeen) }}</span>,
-        {{ device.sessions }} {{ device.sessions === 1 ? 'session' : 'sessions' }} so far.
-        Its numbers are already in every view below.
+        Its first telemetry arrived <span class="viz-mono">{{ formatStamp(device.firstSeen) }}</span>,
+        {{ device.sessions }} {{ device.sessions === 1 ? 'session' : 'sessions' }} so far. Setup
+        worked, and its numbers are already in every view below.
       </p>
 
-      <div class="actions">
-        <button
-          type="button"
-          class="action viz-mono viz-focus"
-          :disabled="pendingDevice === device.device"
-          @click="acknowledge(device.device)"
-        >
-          {{ pendingDevice === device.device ? 'Saving…' : 'Got it' }}
-        </button>
-
-        <p
-          v-if="failures[device.device]"
-          class="failure"
-        >
-          {{ failures[device.device] }}
-        </p>
-      </div>
+      <button
+        type="button"
+        class="action viz-mono viz-focus"
+        @click="dismiss(device.id)"
+      >
+        Got it
+      </button>
     </section>
 
     <section
-      v-for="device in unlabelled"
-      :key="`unlabelled-${device.device}`"
+      v-for="device in waiting"
+      :key="`pending-${device.id}`"
       class="notice notice-fix"
     >
       <p class="viz-eyebrow">
-        Unlabelled telemetry
+        Waiting on setup
       </p>
 
       <h2 class="headline">
-        <span class="headline-rest">Telemetry arrived with no device name</span>
+        <span class="viz-mono">{{ device.name }}</span>
+        <span class="headline-rest">has not reported yet</span>
       </h2>
 
       <p class="viz-prose">
-        It is filed under <span class="viz-code">{{ device.device }}</span>, and every machine
-        that reports without a name lands in that same row. While this stands you cannot tell
-        those machines apart anywhere on this page.
+        You added it <span class="viz-mono">{{ formatStamp(device.createdAt) }}</span> and nothing
+        has arrived from it since. Until it reports it has no numbers anywhere on this page.
       </p>
 
-      <p class="viz-prose">
-        On the machine that sent it, run
-        <span class="viz-code">scripts/setup-device.sh --device &lt;name&gt;</span>
-        and restart Claude Code. The row clears once named telemetry arrives.
-      </p>
+      <NuxtLink
+        to="/devices"
+        class="action viz-mono viz-focus"
+      >
+        Finish setting it up
+      </NuxtLink>
     </section>
   </div>
 </template>
@@ -120,15 +170,9 @@ const { colorFor } = useDeviceColors()
   align-self: center;
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-}
-
 .action {
+  display: inline-block;
+  margin-top: 14px;
   padding: 6px 14px;
   border: 1px solid var(--viz-ink);
   background: transparent;
@@ -138,20 +182,8 @@ const { colorFor } = useDeviceColors()
   cursor: pointer;
 }
 
-.action:hover:not(:disabled) {
+.action:hover {
   background: var(--viz-ink);
   color: var(--viz-surface);
-}
-
-.action:disabled {
-  cursor: progress;
-  color: var(--viz-muted);
-  border-color: var(--viz-grid);
-}
-
-.failure {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--viz-status-critical);
 }
 </style>

@@ -5,7 +5,7 @@ import type { ChartBarGroup, ChartSeries } from '~/utils/viz'
 const { rangeQuery, bucket, preset } = useDashboardQuery()
 const { colorFor } = useDeviceColors()
 
-const { data: devices, pending: devicesPending } = useDevices()
+const { data: devices, pending: devicesPending, unavailable } = useDevices()
 const { data: summaries } = useSummary(rangeQuery)
 const { data: costSeries } = useTimeseries(rangeQuery, 'cost', bucket)
 const { data: tokenSeries } = useTimeseries(rangeQuery, 'tokens', bucket)
@@ -18,29 +18,31 @@ const BREAKDOWN_LIMIT = 8
 const LIVE_TOKEN_KEYS = ['input', 'output']
 const CACHE_TOKEN_KEYS = ['cacheRead', 'cacheCreation']
 
-const isEmpty = computed(() => (devices.value ?? []).length === 0 && (summaries.value ?? []).length === 0)
+// A missing devices API leaves the roster empty without meaning there are no
+// machines, so it renders the dashboard degraded rather than the empty state.
+const isEmpty = computed(() => !unavailable.value && (devices.value ?? []).length === 0)
 
 function toSeries(points: SeriesPoint[] | null): ChartSeries[] {
   const grouped = new Map<string, SeriesPoint[]>()
   for (const point of points ?? []) {
-    const bucketed = grouped.get(point.device)
+    const bucketed = grouped.get(point.deviceId)
     if (bucketed) {
       bucketed.push(point)
     } else {
-      grouped.set(point.device, [point])
+      grouped.set(point.deviceId, [point])
     }
   }
 
   return [...grouped.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([device, devicePoints]) => ({
-      key: device,
-      label: device,
-      color: colorFor(device),
+    .map(([deviceId, devicePoints]) => ({
+      key: deviceId,
+      label: devicePoints[0]!.device,
+      color: colorFor(deviceId),
       points: devicePoints
         .map(point => ({ x: Date.parse(point.bucket), y: point.value }))
         .sort((a, b) => a.x - b.x)
     }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 }
 
 function toGroups(rows: BreakdownRow[] | null, keep?: string[]): ChartBarGroup[] {
@@ -61,7 +63,7 @@ function toGroups(rows: BreakdownRow[] | null, keep?: string[]): ChartBarGroup[]
       total: keyRows.reduce((sum, row) => sum + row.value, 0),
       bars: [...keyRows]
         .sort((a, b) => a.device.localeCompare(b.device))
-        .map(row => ({ key: `${key}:${row.device}`, label: row.device, value: row.value, color: colorFor(row.device) }))
+        .map(row => ({ key: `${key}:${row.deviceId}`, label: row.device, value: row.value, color: colorFor(row.deviceId) }))
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, BREAKDOWN_LIMIT)

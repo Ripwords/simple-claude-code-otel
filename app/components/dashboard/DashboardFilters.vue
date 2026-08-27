@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { DeviceInfo } from '#shared/types'
-
 const { preset, selectedDevices, setPreset, setDevices } = useDashboardQuery()
 const { data: devices } = useDevices()
 const { colorFor } = useDeviceColors()
 
-const deviceNames = computed(() => (devices.value ?? []).map((d: DeviceInfo) => d.device).sort((a, b) => a.localeCompare(b)))
+/** A revoked machine keeps its history, so it stays filterable. */
+const options = computed(() => (devices.value ?? [])
+  .map(device => ({ label: device.name, value: device.id }))
+  .sort((a, b) => a.label.localeCompare(b.label)))
 
 const selection = computed({
   get: () => selectedDevices.value,
@@ -13,9 +14,10 @@ const selection = computed({
 })
 
 const selectionLabel = computed(() => {
-  if (selection.value.length === 0) return `All ${deviceNames.value.length} machines`
-  if (selection.value.length === 1) return selection.value[0]!
-  return `${selection.value.length} machines`
+  if (selection.value.length === 0) return `All ${options.value.length} machines`
+  if (selection.value.length > 1) return `${selection.value.length} machines`
+  // Never fall back to the id: a uuid must not surface in this control.
+  return options.value.find(option => option.value === selection.value[0])?.label ?? '1 machine'
 })
 </script>
 
@@ -42,7 +44,8 @@ const selectionLabel = computed(() => {
     <USelectMenu
       v-model="selection"
       multiple
-      :items="deviceNames"
+      :items="options"
+      value-key="value"
       :search-input="{ placeholder: 'Filter machines' }"
       :ui="{ content: 'viz-root' }"
       color="neutral"
@@ -57,7 +60,7 @@ const selectionLabel = computed(() => {
       <template #item-leading="{ item }">
         <span
           class="swatch"
-          :style="{ backgroundColor: colorFor(item) }"
+          :style="{ backgroundColor: colorFor(item.value) }"
         />
       </template>
     </USelectMenu>
