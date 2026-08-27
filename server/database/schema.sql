@@ -1,20 +1,31 @@
 create schema if not exists telemetry;
 
+create table if not exists telemetry.device (
+  id           uuid        primary key default gen_random_uuid(),
+  name         text        not null unique,
+  token_hash   text        not null unique,
+  token_prefix text        not null,
+  created_at   timestamptz not null default now(),
+  first_seen   timestamptz,
+  last_seen_at timestamptz,
+  revoked_at   timestamptz
+);
+
 create table if not exists telemetry.session (
   session_id   text        primary key,
-  device       text        not null,
+  device_id    uuid        not null references telemetry.device (id) on delete cascade,
   started_at   timestamptz not null,
   last_seen_at timestamptz not null,
   attrs        jsonb       not null default '{}'::jsonb
 );
 
 create index if not exists session_device_started_idx
-  on telemetry.session (device, started_at desc);
+  on telemetry.session (device_id, started_at desc);
 
 create table if not exists telemetry.metric_point (
   dedupe_key uuid             primary key,
   ts         timestamptz      not null,
-  device     text             not null,
+  device_id  uuid             not null references telemetry.device (id) on delete cascade,
   session_id text,
   metric     text             not null,
   model      text,
@@ -24,13 +35,15 @@ create table if not exists telemetry.metric_point (
 
 create index if not exists metric_point_metric_ts_idx
   on telemetry.metric_point (metric, ts desc);
+create index if not exists metric_point_device_idx
+  on telemetry.metric_point (device_id);
 create index if not exists metric_point_ts_brin_idx
   on telemetry.metric_point using brin (ts) with (pages_per_range = 32);
 
 create table if not exists telemetry.event (
   dedupe_key  uuid        primary key,
   ts          timestamptz not null,
-  device      text        not null,
+  device_id   uuid        not null references telemetry.device (id) on delete cascade,
   session_id  text,
   name        text        not null,
   model       text,
@@ -40,13 +53,9 @@ create table if not exists telemetry.event (
 
 create index if not exists event_name_ts_idx
   on telemetry.event (name, ts desc);
+create index if not exists event_device_idx
+  on telemetry.event (device_id);
 create index if not exists event_ts_brin_idx
   on telemetry.event using brin (ts) with (pages_per_range = 32);
 create index if not exists event_attrs_gin_idx
   on telemetry.event using gin (attrs jsonb_path_ops);
-
-create table if not exists telemetry.device (
-  device          text        primary key,
-  first_seen      timestamptz not null,
-  acknowledged_at timestamptz
-);

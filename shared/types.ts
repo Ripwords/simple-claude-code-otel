@@ -19,7 +19,30 @@ export const EVENTS = {
 
 export type Bucket = 'hour' | 'day'
 
+// Derived from first_seen and revoked_at rather than stored, so it cannot drift
+// out of agreement with the timestamps it summarises.
+export type DeviceStatus = 'pending' | 'reporting' | 'revoked'
+
+export interface DeviceInfo {
+  id: string
+  name: string
+  tokenPrefix: string
+  status: DeviceStatus
+  createdAt: string
+  firstSeen: string | null
+  lastSeen: string | null
+  sessions: number
+}
+
+// The plaintext token exists in exactly one response and is never stored or
+// returned again. Only its sha256 and a display prefix are kept.
+export interface DeviceSecret {
+  device: DeviceInfo
+  token: string
+}
+
 export interface DeviceSummary {
+  deviceId: string
   device: string
   costUsd: number
   inputTokens: number
@@ -42,24 +65,14 @@ export interface DeviceSummary {
 
 export interface SeriesPoint {
   bucket: string
+  deviceId: string
   device: string
   value: number
 }
 
 export interface BreakdownRow {
+  deviceId: string
   device: string
   key: string
   value: number
 }
-
-export interface DeviceInfo {
-  device: string
-  firstSeen: string
-  lastSeen: string
-  sessions: number
-  acknowledgedAt: string | null
-  isNew: boolean
-  isUnlabelled: boolean
-}
-
-export const UNLABELLED_DEVICE = 'unknown'

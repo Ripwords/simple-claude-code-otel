@@ -5,8 +5,8 @@ database, deployed on Vercel. It receives OpenTelemetry directly from Claude Cod
 and shows you cost, tokens, sessions, tool calls, and errors.
 
 It tells your machines apart. If you run Claude Code on a work laptop and a
-personal laptop under one Anthropic account, every panel splits by device and the
-top of the page compares the two side by side.
+personal laptop under one Anthropic account, every panel splits by machine and the
+top of the page is built around the gap between two of them.
 
 ## How it differs from a collector stack
 
@@ -14,12 +14,30 @@ The usual setup is four containers: an OpenTelemetry Collector, Prometheus, Loki
 and Grafana. This is one Vercel project and one database, and there is nothing to
 run at home.
 
-That works because of one measured fact. Claude Code exports its metrics with
-delta temporality, so each export carries the increase since the last one rather
-than a running total. Every number on the dashboard is a `SUM` over a time window.
-Nothing has to reconstruct a counter, so nothing needs Prometheus.
-`docs/telemetry-schema.md` records the full wire format, captured off a real
-session rather than copied from a doc.
+That works because of one measured fact. Claude Code exports its metrics with delta
+temporality, so each export carries the increase since the last one rather than a
+running total. Every number on the dashboard is a `SUM` over a time window. Nothing
+has to reconstruct a counter, so nothing needs Prometheus.
+`docs/telemetry-schema.md` records the full wire format, captured off a real session
+rather than copied from a doc.
+
+## How a machine proves who it is
+
+Each machine gets its own ingest token, minted in the dashboard. The token is the
+identity: the server looks it up and knows which machine is calling before it reads
+the payload.
+
+That matters more than it sounds. Claude Code sends no machine identifier of its
+own, so the obvious design is to have each machine declare a name in
+`OTEL_RESOURCE_ATTRIBUTES`. This project did that first and then removed it, because
+a declared name is only as good as the machine declaring it. A typo forked a
+machine's history in two, any machine holding the shared token could claim any name,
+and a machine that set no name at all vanished into a shared `unknown` bucket.
+`docs/design-decision-tokens.md` has the full reasoning.
+
+Because identity is now a server-side id rather than a name on the wire, renaming a
+machine in the dashboard keeps every metric it ever sent. Revoking one machine's
+token leaves the others alone.
 
 ## Deploy it
 
@@ -41,14 +59,14 @@ You need a Vercel account, Bun, and Node 20 or newer.
 	vercel integration add neon
 	```
 
-3. Generate a token that your machines will use to authenticate, and set it in all
-   three environments.
+3. Set a dashboard password. `auth:hash` prints both values it generates; add each
+   to Vercel and to `.env.local`.
 
 	```sh
-	openssl rand -hex 24
-	vercel env add INGEST_TOKEN production
-	vercel env add INGEST_TOKEN preview
-	vercel env add INGEST_TOKEN development
+	bun run auth:hash
+	vercel env add DASHBOARD_PASSWORD_HASH production
+	vercel env add SESSION_SECRET production
+	vercel env add CRON_SECRET production
 	```
 
 4. Create the tables.
@@ -64,43 +82,32 @@ You need a Vercel account, Bun, and Node 20 or newer.
 	vercel deploy --prod
 	```
 
-Note the deployment URL and the token. Each machine needs both.
+## Add your machines
 
-## Point a machine at it
+Open the dashboard, sign in, and add a machine. Name it whatever you will recognise
+on a chart. The dashboard shows an ingest token **once**, along with a command to
+run. Copy it before you navigate away; if you lose it, rotate the token and get a
+new one.
 
-Run this on each machine, with a different `--device` name each time. The name is
-the only thing that tells your machines apart, so pick labels you will recognise
-on a chart.
-
-```sh
-./scripts/setup-device.sh \
-  --device work-laptop \
-  --endpoint https://your-app.vercel.app/api/otlp \
-  --token <your INGEST_TOKEN>
-```
-
-On the other machine:
+On that machine, run what the dashboard gave you:
 
 ```sh
 ./scripts/setup-device.sh \
-  --device personal-mac \
   --endpoint https://your-app.vercel.app/api/otlp \
-  --token <your INGEST_TOKEN>
+  --token <the token the dashboard showed you>
 ```
+
+Then do the same on your second machine with its own token. Never reuse one token on
+two machines; they would report as a single machine and you would lose exactly the
+distinction this project exists to give you.
 
 The script writes a telemetry block into `~/.claude/settings.json` and keeps
-everything else in the file. It saves the previous version to
-`~/.claude/settings.json.bak`. Start a new Claude Code session for the change to
-take effect.
-
-To relabel a machine later, run the script again with a new `--device`. Data
-already stored keeps the old label, so the chart shows both names until the old
-one ages out.
+everything else in the file, saving the previous version alongside it. Start a new
+Claude Code session for the change to take effect.
 
 ### Setting it up by hand
 
-The script only writes this, so you can paste it into `~/.claude/settings.json`
-yourself:
+The script only writes this:
 
 ```json
 {
@@ -110,34 +117,24 @@ yourself:
     "OTEL_LOGS_EXPORTER": "otlp",
     "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-app.vercel.app/api/otlp",
-    "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer <your INGEST_TOKEN>",
-    "OTEL_RESOURCE_ATTRIBUTES": "device.name=work-laptop"
+    "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer <the token>"
   }
 }
 ```
 
-Claude Code sends no machine identifier of its own. There is no `host.name` and no
-device id on the wire, and `service.name` is the constant `claude-code`, so
-`OTEL_RESOURCE_ATTRIBUTES` is the only way to tell two machines apart.
+## Managing machines
 
-## It notices a new machine on its own
+Renaming a machine keeps its whole history, because the name is a label rather than
+the identity.
 
-You do not register machines anywhere. The first time telemetry arrives carrying a
-`device.name` the dashboard has never seen, that machine appears at the top of the
-page with the date it started reporting and a button to dismiss the notice. A
-machine stays new until you dismiss it, rather than for a fixed window, so one that
-first reports overnight is still waiting for you in the morning.
+Rotating a token kills the old one immediately and keeps the history. Do this if a
+token leaks, or if you lost it before copying it.
 
-A separate notice covers the case where telemetry arrives with no `device.name` at
-all. That traffic is filed under `unknown`, and every unnamed machine lands in the
-same row, so you cannot tell those machines apart. This notice names the setup
-command and does not offer to dismiss it, because nothing has been fixed until a
-named machine reports.
+Revoking a token stops that machine reporting and keeps everything it already sent.
+Its spend still appears in every chart, because the money was real.
 
-`unknown` keeps its spending in every chart and in the summary table, since the
-money is real. It is left out of the machine-to-machine comparison and drawn in
-neutral grey rather than taking a machine colour, because telemetry with no device
-name cannot be attributed to a machine.
+Deleting a machine destroys all of its telemetry. That one cascades and does not come
+back.
 
 ## What it stores, and what it does not
 
@@ -146,11 +143,12 @@ Code only sends the real text when you set `OTEL_LOG_USER_PROMPTS=1` or
 `OTEL_LOG_ASSISTANT_RESPONSES=1`, and this project never asks you to.
 
 Your account email does arrive, attached to each session. It is stored once per
-session rather than on every row. The database is yours and the deployment is
-private by default.
+session rather than on every row.
 
 Rows older than `RETENTION_DAYS` (90 by default) are deleted by a daily cron at
-04:00 UTC. Noisy hook and plugin events are deleted after 30 days regardless.
+04:00 UTC. Noisy hook and plugin events are deleted after 30 days regardless. A
+machine's own row is retired only once it is revoked or was never used, and only
+after all of its telemetry has aged out.
 
 ## Develop locally
 
@@ -158,9 +156,10 @@ Rows older than `RETENTION_DAYS` (90 by default) are deleted by a daily cron at
 bun run dev
 ```
 
-Point a machine at `http://localhost:3000/api/otlp` to send it real traffic.
-Lower `OTEL_METRIC_EXPORT_INTERVAL` to `10000` while you are working, or you will
-wait a minute between exports.
+Add a machine in the local dashboard and point a real Claude Code session at
+`http://localhost:3000/api/otlp` to send it traffic. Lower
+`OTEL_METRIC_EXPORT_INTERVAL` to `10000` while you are working, or you will wait a
+minute between exports.
 
 ```sh
 bun run lint
@@ -170,8 +169,13 @@ bun run test
 
 ## Design notes
 
-- `docs/telemetry-schema.md` is the measured wire format: every metric, every
-  event, every attribute, and where device identity comes from.
+- `docs/telemetry-schema.md` is the measured wire format: every metric, every event,
+  every attribute, and what Claude Code does and does not tell you about the machine.
+- `docs/design-decision-tokens.md` explains why device identity lives in the
+  credential rather than the payload.
 - `docs/design-decision.md` explains the storage schema and what was rejected.
-- `docs/design-a.md` and `docs/design-b.md` are the two designs that were explored
-  before the shipped one was picked.
+- `docs/design-a.md` and `docs/design-b.md` are the two schemas explored before the
+  shipped one was picked.
+- `docs/neon-auth-notes.md` is a survey of Neon Auth, which this project evaluated
+  and did not adopt. It records how to close the open sign-up that Neon Auth ships
+  with, which matters if you ever enable it.

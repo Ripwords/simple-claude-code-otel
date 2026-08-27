@@ -12,7 +12,9 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     databaseUrl: process.env.DATABASE_URL || '',
-    ingestToken: process.env.INGEST_TOKEN || '',
+    cronSecret: process.env.CRON_SECRET || '',
+    dashboardPasswordHash: process.env.DASHBOARD_PASSWORD_HASH || '',
+    sessionSecret: process.env.SESSION_SECRET || '',
     retentionDays: process.env.RETENTION_DAYS || '90',
     public: {
       appName: 'Claude Code Telemetry'

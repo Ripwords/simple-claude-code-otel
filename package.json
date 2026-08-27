@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "db:push": "bun --env-file=.env.local scripts/db-push.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "auth:hash": "node scripts/hash-password.mjs"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.125",
