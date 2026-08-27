@@ -1,6 +1,6 @@
-import { clearSession } from '../../utils/session'
+import { endSession } from '../../utils/session'
 
 export default defineEventHandler((event) => {
-  clearSession(event)
+  endSession(event)
   return { ok: true }
 })

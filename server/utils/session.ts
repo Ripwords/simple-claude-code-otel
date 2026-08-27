@@ -33,7 +33,7 @@ export function issueSession(event: H3Event, secret: string): void {
   })
 }
 
-export function clearSession(event: H3Event): void {
+export function endSession(event: H3Event): void {
   deleteCookie(event, COOKIE_NAME, { path: '/' })
 }
 
