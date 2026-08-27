@@ -6,13 +6,11 @@ interface Props {
   bucket: 'hour' | 'day'
   height?: number
   format?: (value: number) => string
-  area?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   height: 240,
-  format: formatCompact,
-  area: false
+  format: formatCompact
 })
 
 const DEFAULT_WIDTH = 720
@@ -94,10 +92,14 @@ const lookups = computed(() => drawn.value.map(s => new Map(s.points.map(p => [p
 
 const paths = computed(() => drawn.value.map(s => linePath(s.points, sx.value, sy.value)))
 
-const areaFill = computed(() => {
-  const only = props.area && drawn.value.length === 1 ? drawn.value[0] : undefined
-  return only ? areaPath(only.points, sx.value, sy.value, baselineY.value) : ''
-})
+/**
+ * A one-point series has no segment to stroke, so without an explicit dot a
+ * real reading would draw nothing at all.
+ */
+const soloPoints = computed(() => drawn.value.flatMap((s) => {
+  const only = s.points.length === 1 ? s.points[0] : undefined
+  return only ? [{ key: s.key, color: s.color, cx: sx.value(only.x), cy: sy.value(only.y) }] : []
+}))
 
 const LABEL_MIN_GAP = 13
 
@@ -232,18 +234,21 @@ function onMove(event: PointerEvent) {
         >{{ formatAxisTick(tick, bucket) }}</text>
 
         <path
-          v-if="areaFill"
-          :d="areaFill"
-          :fill="drawn[0]!.color"
-          class="area"
-        />
-
-        <path
           v-for="(d, i) in paths"
           :key="drawn[i]!.key"
           :d="d"
           :stroke="drawn[i]!.color"
           class="line"
+        />
+
+        <circle
+          v-for="point in soloPoints"
+          :key="`solo-${point.key}`"
+          :cx="point.cx"
+          :cy="point.cy"
+          r="4"
+          :fill="point.color"
+          class="marker"
         />
 
         <template v-if="hoverX !== null">
@@ -290,7 +295,7 @@ function onMove(event: PointerEvent) {
         class="tooltip"
         :style="{ left: `${tooltip.left}px` }"
       >
-        <div class="tooltip-heading">
+        <div class="tooltip-heading viz-mono">
           {{ tooltip.heading }}
         </div>
         <div
@@ -302,8 +307,8 @@ function onMove(event: PointerEvent) {
             class="tooltip-swatch"
             :style="{ background: row.color }"
           />
-          <span class="tooltip-label">{{ row.label }}</span>
-          <span class="tooltip-value viz-tabular">{{ row.value }}</span>
+          <span class="tooltip-label viz-mono">{{ row.label }}</span>
+          <span class="tooltip-value viz-mono">{{ row.value }}</span>
         </div>
       </div>
     </div>
@@ -354,11 +359,6 @@ function onMove(event: PointerEvent) {
   stroke-linejoin: round;
 }
 
-.area {
-  opacity: 0.12;
-  stroke: none;
-}
-
 .marker {
   stroke: var(--viz-surface);
   stroke-width: 2;
@@ -382,7 +382,6 @@ function onMove(event: PointerEvent) {
   width: 190px;
   padding: 8px 10px;
   border: 1px solid var(--viz-grid);
-  border-radius: 6px;
   background: var(--viz-surface);
   color: var(--viz-ink);
   box-shadow: 0 2px 8px var(--viz-shadow);
@@ -406,7 +405,6 @@ function onMove(event: PointerEvent) {
 .tooltip-swatch {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
   flex: none;
 }
 

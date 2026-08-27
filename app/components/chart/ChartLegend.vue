@@ -18,7 +18,7 @@ defineProps<{ items: LegendItem[] }>()
         class="legend-swatch"
         :style="{ background: item.color }"
       />
-      <span>{{ item.label }}</span>
+      <span class="viz-mono">{{ item.label }}</span>
     </li>
   </ul>
 </template>
@@ -45,7 +45,6 @@ defineProps<{ items: LegendItem[] }>()
 .legend-swatch {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
   flex: none;
 }
 </style>
