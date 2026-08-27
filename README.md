@@ -89,21 +89,46 @@ on a chart. The dashboard shows an ingest token **once**, along with a command t
 run. Copy it before you navigate away; if you lose it, rotate the token and get a
 new one.
 
-On that machine, run what the dashboard gave you:
+On that machine, run what the dashboard gave you. A machine you are only pointing at
+the dashboard never needs a clone of this repository, so the command fetches the
+script rather than running one from a checkout:
 
 ```sh
-./scripts/setup-device.sh \
-  --endpoint https://your-app.vercel.app/api/otlp \
-  --token <the token the dashboard showed you>
+curl -fsSL https://raw.githubusercontent.com/Ripwords/simple-claude-code-otel/main/scripts/setup-device.sh \
+  | bash -s -- \
+    --endpoint https://your-app.vercel.app/api/otlp \
+    --token <the token the dashboard showed you>
 ```
+
+It is your machine's `~/.claude/settings.json` at stake, so read the script before you
+pipe it to a shell. It is one file, and the URL above is the whole of it.
 
 Then do the same on your second machine with its own token. Never reuse one token on
 two machines; they would report as a single machine and you would lose exactly the
 distinction this project exists to give you.
 
 The script writes a telemetry block into `~/.claude/settings.json` and keeps
-everything else in the file, saving the previous version alongside it. Start a new
+everything else in the file, saving the previous version alongside it. It edits that
+JSON with whichever of `jq`, `node`, or `python3` the machine already has. Start a new
 Claude Code session for the change to take effect.
+
+### The Claude desktop app is covered by the same token
+
+The desktop app's Code tab runs its own copy of Claude Code, and that copy reads the
+same `~/.claude/settings.json`. So one token covers both the terminal and the desktop
+app on that machine, which is right: it is one machine.
+
+This is why the script writes the settings file rather than telling you to export
+variables from your shell profile. The desktop app does not inherit your shell
+environment; on macOS it reads only `PATH` and a fixed set of variables out of
+`~/.zshrc`, and on Windows it ignores PowerShell profiles entirely. A shell export
+would quietly cover your terminal and miss the app.
+
+Two surfaces stay out of reach. **Cloud sessions** run on Anthropic's machines, which
+cannot see your `~/.claude/settings.json` and whose network reaches an allowlist your
+dashboard is not on. **Cowork** takes its telemetry configuration from the Anthropic
+admin console, which only an organization administrator can set. The Chat tab sends
+no telemetry at all, so there is nothing there to collect.
 
 ### Setting it up by hand
 
