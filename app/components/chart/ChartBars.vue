@@ -13,11 +13,23 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const DEFAULT_WIDTH = 720
-const LABEL_WIDTH = 128
+const CATEGORY_FONT_PX = 12
+const FALLBACK_ADVANCE = CATEGORY_FONT_PX * 0.6
+const LABEL_PAD = 12
+const MIN_GUTTER = 56
+const MAX_GUTTER_FRACTION = 0.42
+const MIN_LABEL_CHARS = 4
 const BAR_GAP = 2
 const GROUP_GAP = 16
 const PAD_TOP = 6
 const TOOLTIP_WIDTH = 190
+
+/**
+ * Category labels are set in a mono face, so one measured advance width scales
+ * to every label exactly. That is what lets the gutter be reserved rather than
+ * guessed, which is what stopped long model ids being sliced off at x=0.
+ */
+const advance = ref(FALLBACK_ADVANCE)
 
 interface Row {
   key: string
@@ -34,8 +46,21 @@ const hoverKey = ref<string | null>(null)
 
 let observer: ResizeObserver | null = null
 
+function measureAdvance() {
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return
+  const family = getComputedStyle(document.documentElement).getPropertyValue('--font-mono') || 'monospace'
+  context.font = `${CATEGORY_FONT_PX}px ${family}`
+  const measured = context.measureText('0'.repeat(20)).width / 20
+  if (measured > 0) advance.value = measured
+}
+
 onMounted(() => {
   if (!import.meta.client || !plot.value) return
+
+  measureAdvance()
+  document.fonts?.ready.then(measureAdvance)
+
   observer = new ResizeObserver((entries) => {
     const measured = entries[0]?.contentRect.width ?? 0
     if (measured > 0) width.value = measured
@@ -63,6 +88,19 @@ const showLegend = computed(() => props.groups.some(g => g.bars.length >= 2))
 const showValues = computed(() => distinctBars.value.length > 0 && distinctBars.value.length <= 4)
 const padRight = computed(() => (showValues.value ? 72 : 14))
 
+const longestLabel = computed(() => Math.max(0, ...props.groups.map(g => g.label.length)))
+
+const gutter = computed(() => {
+  const ceiling = Math.max(MIN_GUTTER, width.value * MAX_GUTTER_FRACTION)
+  return Math.min(longestLabel.value * advance.value + LABEL_PAD, ceiling)
+})
+
+const labelChars = computed(() => Math.max(MIN_LABEL_CHARS, Math.floor((gutter.value - LABEL_PAD) / advance.value)))
+
+function shorten(label: string): string {
+  return label.length <= labelChars.value ? label : `${label.slice(0, labelChars.value - 1)}…`
+}
+
 const rows = computed<Row[]>(() => {
   const out: Row[] = []
   let y = PAD_TOP
@@ -82,7 +120,7 @@ const groupRows = computed(() => props.groups.map((group) => {
   const last = owned[owned.length - 1]
   const top = first ? first.y : PAD_TOP
   const bottom = last ? last.y + props.barHeight : top
-  return { label: group.label, y: (top + bottom) / 2 }
+  return { label: group.label, short: shorten(group.label), truncated: group.label.length > labelChars.value, y: (top + bottom) / 2 }
 }))
 
 const height = computed(() => {
@@ -90,16 +128,23 @@ const height = computed(() => {
   return last ? last.y + props.barHeight + PAD_TOP : PAD_TOP * 2
 })
 
-const sx = computed(() => linearScale([0, niceCeil(maxValue.value)], [LABEL_WIDTH, Math.max(LABEL_WIDTH + 1, width.value - padRight.value)]))
+const sx = computed(() => linearScale([0, niceCeil(maxValue.value)], [gutter.value, Math.max(gutter.value + 1, width.value - padRight.value)]))
+
+/**
+ * Any non-zero value gets at least MIN_BAR of ink. Without it a real reading
+ * next to a much larger one rounds to zero width and reads as "nothing here".
+ */
+const MIN_BAR = 3
 
 function barWidth(value: number): number {
-  return Math.max(0, sx.value(value) - LABEL_WIDTH)
+  if (value <= 0) return 0
+  return Math.max(MIN_BAR, sx.value(value) - gutter.value)
 }
 
 const tooltip = computed(() => {
   const row = rows.value.find(r => r.key === hoverKey.value)
   if (!row) return null
-  const anchor = sx.value(row.value)
+  const anchor = gutter.value + barWidth(row.value)
   const flip = anchor + 12 + TOOLTIP_WIDTH > width.value
   return {
     heading: row.groupLabel,
@@ -140,14 +185,17 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
           :key="group.label"
           class="category"
           text-anchor="end"
-          :x="LABEL_WIDTH - 12"
+          :x="gutter - LABEL_PAD"
           :y="group.y + 4"
-        >{{ group.label }}</text>
+        >
+          <title v-if="group.truncated">{{ group.label }}</title>
+          {{ group.short }}
+        </text>
 
         <line
           aria-hidden="true"
-          :x1="LABEL_WIDTH"
-          :x2="LABEL_WIDTH"
+          :x1="gutter"
+          :x2="gutter"
           :y1="0"
           :y2="height"
           class="baseline"
@@ -158,24 +206,23 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
           :key="row.key"
         >
           <rect
-            :x="LABEL_WIDTH"
+            :x="gutter"
             :y="row.y"
             :width="barWidth(row.value)"
             :height="barHeight"
-            rx="4"
+            rx="3"
             :fill="row.color"
-            class="bar"
           />
           <text
             v-if="showValues"
             class="value viz-tabular"
-            :x="LABEL_WIDTH + barWidth(row.value) + 8"
+            :x="gutter + barWidth(row.value) + 8"
             :y="row.y + barHeight / 2 + 4"
           >{{ format(row.value) }}</text>
           <rect
-            :x="LABEL_WIDTH"
+            :x="gutter"
             :y="row.y - 4"
-            :width="Math.max(0, width - padRight - LABEL_WIDTH)"
+            :width="Math.max(0, width - padRight - gutter)"
             :height="barHeight + 8"
             class="hit"
             @pointerenter="hoverKey = row.key"
@@ -189,7 +236,7 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
         class="tooltip"
         :style="{ left: `${tooltip.left}px`, top: `${tooltip.top}px` }"
       >
-        <div class="tooltip-heading">
+        <div class="tooltip-heading viz-mono">
           {{ tooltip.heading }}
         </div>
         <div class="tooltip-row">
@@ -197,8 +244,8 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
             class="tooltip-swatch"
             :style="{ background: tooltip.color }"
           />
-          <span class="tooltip-label">{{ tooltip.label }}</span>
-          <span class="tooltip-value viz-tabular">{{ tooltip.value }}</span>
+          <span class="tooltip-label viz-mono">{{ tooltip.label }}</span>
+          <span class="tooltip-value viz-mono">{{ tooltip.value }}</span>
         </div>
       </div>
     </div>
@@ -232,11 +279,6 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
   fill: var(--viz-ink-secondary);
 }
 
-.bar {
-  stroke: var(--viz-surface);
-  stroke-width: 2;
-}
-
 .value {
   font-size: 11px;
   fill: var(--viz-ink-secondary);
@@ -251,7 +293,6 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
   width: 190px;
   padding: 8px 10px;
   border: 1px solid var(--viz-grid);
-  border-radius: 6px;
   background: var(--viz-surface);
   color: var(--viz-ink);
   box-shadow: 0 2px 8px var(--viz-shadow);
@@ -263,6 +304,7 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
   margin-bottom: 6px;
   color: var(--viz-ink-secondary);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .tooltip-row {
@@ -275,7 +317,6 @@ const ariaLabel = computed(() => `Bar chart across ${props.groups.length} catego
 .tooltip-swatch {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
   flex: none;
 }
 
