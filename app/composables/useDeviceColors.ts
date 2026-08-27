@@ -1,4 +1,5 @@
 import type { DeviceInfo } from '#shared/types'
+import { UNLABELLED_DEVICE } from '#shared/types'
 
 export const SERIES_SLOT_COUNT = 8
 
@@ -8,12 +9,25 @@ export interface DeviceColor {
   color: string
 }
 
+/**
+ * The categorical palette encodes identity, and the unlabelled bucket is the
+ * absence of one, so it takes neutral ink instead of a hue. Painting it like a
+ * machine would claim an identity it does not have, and would let a
+ * misconfiguration compete with the real machines for attention.
+ */
 function assign(devices: string[]): Map<string, DeviceColor> {
-  const sorted = [...devices].sort((a, b) => a.localeCompare(b))
-  return new Map(sorted.map((device, index) => {
+  const named = devices.filter(device => device !== UNLABELLED_DEVICE).sort((a, b) => a.localeCompare(b))
+
+  const table = new Map<string, DeviceColor>(named.map((device, index) => {
     const slot = (index % SERIES_SLOT_COUNT) + 1
     return [device, { device, slot, color: `var(--viz-series-${slot})` }]
   }))
+
+  if (devices.includes(UNLABELLED_DEVICE)) {
+    table.set(UNLABELLED_DEVICE, { device: UNLABELLED_DEVICE, slot: 0, color: 'var(--viz-baseline)' })
+  }
+
+  return table
 }
 
 /**

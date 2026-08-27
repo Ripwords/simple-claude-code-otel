@@ -1,4 +1,5 @@
 import type { BreakdownRow, DeviceInfo, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
+import { UNLABELLED_DEVICE } from '#shared/types'
 
 const DEVICES = ['personal-mac', 'work-mac'] as const
 
@@ -10,10 +11,40 @@ function seeded(seed: number): () => number {
   }
 }
 
+/**
+ * Covers all three onboarding states at once, so the notices, the two-device
+ * spine, and the unlabelled warning can all be built without waiting on real
+ * telemetry from a third machine.
+ */
 export function fixtureDevices(): DeviceInfo[] {
   return [
-    { device: 'work-mac', firstSeen: '2026-06-02T09:14:00.000Z', lastSeen: '2026-08-27T08:51:00.000Z', sessions: 412 },
-    { device: 'personal-mac', firstSeen: '2026-06-09T19:02:00.000Z', lastSeen: '2026-08-26T23:40:00.000Z', sessions: 147 }
+    {
+      device: 'work-mac',
+      firstSeen: '2026-06-02T09:14:00.000Z',
+      lastSeen: '2026-08-27T08:51:00.000Z',
+      sessions: 412,
+      acknowledgedAt: '2026-06-02T09:40:00.000Z',
+      isNew: false,
+      isUnlabelled: false
+    },
+    {
+      device: 'personal-mac',
+      firstSeen: '2026-08-26T19:02:00.000Z',
+      lastSeen: '2026-08-26T23:40:00.000Z',
+      sessions: 12,
+      acknowledgedAt: null,
+      isNew: true,
+      isUnlabelled: false
+    },
+    {
+      device: UNLABELLED_DEVICE,
+      firstSeen: '2026-08-25T11:20:00.000Z',
+      lastSeen: '2026-08-27T07:05:00.000Z',
+      sessions: 4,
+      acknowledgedAt: null,
+      isNew: true,
+      isUnlabelled: true
+    }
   ]
 }
 
@@ -90,7 +121,7 @@ export function fixtureTimeseries(devices: string[], metric: MetricKey, bucket: 
 }
 
 const BREAKDOWN_KEYS: Record<string, Array<[string, number]>> = {
-  model: [['claude-opus-4-8', 0.62], ['claude-sonnet-4-6', 0.29], ['claude-haiku-4-6', 0.09]],
+  model: [['claude-opus-4-8-20260714', 0.62], ['claude-sonnet-4-6-20260212', 0.29], ['claude-haiku-4-5-20251001', 0.09]],
   toolName: [['Edit', 0.28], ['Bash', 0.24], ['Read', 0.21], ['Grep', 0.12], ['Write', 0.09], ['Task', 0.06]],
   tokenType: [['cacheRead', 0.78], ['input', 0.13], ['cacheCreation', 0.06], ['output', 0.03]],
   editDecision: [['accept', 0.86], ['reject', 0.11], ['auto_accept', 0.03]],
