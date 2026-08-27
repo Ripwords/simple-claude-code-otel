@@ -11,6 +11,7 @@ const field = ref<HTMLInputElement | null>(null)
 const confirmButton = ref<HTMLButtonElement | null>(null)
 
 const device = computed(() => props.pane.device)
+const owner = computed(() => device.value.account ? accountLabel(device.value.account) : null)
 const typesToConfirm = computed(() => props.pane.action === 'delete')
 const matched = computed(() => typed.value.trim() === device.value.name)
 
@@ -18,6 +19,7 @@ const CONFIRM_LABEL: Record<PanelResult['action'], string> = {
   rename: 'Save name',
   rotate: 'Mint a new token',
   revoke: 'Revoke the token',
+  release: 'Release the binding',
   delete: 'Delete this machine'
 }
 
@@ -84,6 +86,22 @@ onMounted(() => {
       </p>
       <p class="viz-prose muted">
         Rotating a new token later puts it back into service.
+      </p>
+    </template>
+
+    <template v-else-if="pane.action === 'release'">
+      <p class="viz-prose">
+        This clears the account claim on <span class="viz-mono">{{ device.name }}</span>. Nothing it
+        has already sent is touched: every session, metric point and event stays, and stays in every
+        chart.
+      </p>
+      <p class="viz-prose">
+        The next Claude Code account to report from this machine claims it, and every account after
+        that one is refused.
+        <template v-if="owner">
+          If the machine is still signed into <span class="viz-mono">{{ owner }}</span>, that is the
+          account that takes it back.
+        </template>
       </p>
     </template>
 

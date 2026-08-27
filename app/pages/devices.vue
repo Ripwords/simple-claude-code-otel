@@ -4,7 +4,7 @@ import type { DeviceAction, PanelResult, SecretReason } from '~/utils/deviceStat
 
 useSeoMeta({ title: 'Machines · Claude Code Telemetry' })
 
-const { data, pending, error, unavailable, create, rename, rotate, revoke, destroy } = useDevices()
+const { data, pending, error, unavailable, create, rename, rotate, revoke, release, destroy } = useDevices()
 
 const devices = computed(() => sortDevices(data.value ?? []))
 const otlpEndpoint = `${useRequestURL().origin}/api/otlp`
@@ -26,6 +26,10 @@ const failure = ref<string | null>(null)
 const newName = ref('')
 const adding = ref(false)
 const addFailure = ref<string | null>(null)
+
+// A 404 here is ambiguous in a way the generic message cannot be: the route may
+// not be deployed yet, or the machine may genuinely be gone.
+const RELEASE_MISSING = 'The release route answered 404. Either this deployment does not have it yet, or this machine is already gone. Reload the page to tell which.'
 
 const rowPane = computed(() => pane.value.kind === 'row' ? { action: pane.value.action, device: pane.value.device } : null)
 const secretPane = computed(() => pane.value.kind === 'secret' ? pane.value : null)
@@ -85,12 +89,17 @@ async function confirm(result: PanelResult) {
     } else if (result.action === 'revoke') {
       await revoke(device.id)
       pane.value = { kind: 'idle' }
+    } else if (result.action === 'release') {
+      await release(device.id)
+      pane.value = { kind: 'idle' }
     } else {
       const counts = await destroy(device.id)
       pane.value = { kind: 'destroyed', name: device.name, counts }
     }
   } catch (err) {
-    failure.value = describeFailure(err, `${result.action} the machine`)
+    failure.value = result.action === 'release' && statusOf(err) === 404
+      ? RELEASE_MISSING
+      : describeFailure(err, `${result.action} the machine`)
   } finally {
     busy.value = false
   }

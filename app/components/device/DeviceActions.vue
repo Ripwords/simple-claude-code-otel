@@ -6,7 +6,7 @@ const props = defineProps<{ device: DeviceInfo, open: DeviceAction | null }>()
 
 defineEmits<{ act: [action: DeviceAction] }>()
 
-const actions = computed(() => STATUS[props.device.status].actions)
+const actions = computed(() => actionsFor(props.device))
 </script>
 
 <template>

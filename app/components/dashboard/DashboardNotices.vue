@@ -2,6 +2,13 @@
 const STORAGE_KEY = 'cct:announced-devices'
 const RECENT_MS = 86_400_000
 
+interface Refusal {
+  id: string
+  name: string
+  at: string
+  count: number
+}
+
 interface Arrival {
   id: string
   name: string
@@ -55,6 +62,13 @@ const arrivals = computed<Arrival[]>(() => {
 
 const waiting = computed(() => (devices.value ?? []).filter(device => device.status === 'pending'))
 
+// Not dismissible, unlike an arrival. A refusal is a live hole in the data, and
+// it stops on its own the moment the machine reports under the right account.
+const refused = computed<Refusal[]>(() => (devices.value ?? []).flatMap<Refusal>((device) => {
+  if (device.conflict === null) return []
+  return [{ id: device.id, name: device.name, at: device.conflict.at, count: device.conflict.count }]
+}))
+
 function dismiss(id: string) {
   const next = [...announced.value, id]
   announced.value = next
@@ -64,9 +78,43 @@ function dismiss(id: string) {
 
 <template>
   <div
-    v-if="arrivals.length > 0 || waiting.length > 0"
+    v-if="refused.length > 0 || arrivals.length > 0 || waiting.length > 0"
     class="notices"
   >
+    <section
+      v-for="device in refused"
+      :key="`refused-${device.id}`"
+      class="notice notice-broken"
+    >
+      <p class="eyebrow viz-eyebrow">
+        <DeviceConflictMark />
+        <span>Telemetry refused</span>
+      </p>
+
+      <h2 class="headline">
+        <span
+          class="dot"
+          :style="{ backgroundColor: colorFor(device.id) }"
+        />
+        <span class="viz-mono">{{ device.name }}</span>
+        <span class="headline-rest">is being turned away</span>
+      </h2>
+
+      <p class="viz-prose">
+        A different Claude Code account has been reporting from this machine, and every attempt was
+        refused, {{ device.count === 1 ? 'once' : `${formatCount(device.count)} times` }}, most
+        recently <span class="viz-mono">{{ formatStamp(device.at) }}</span>. Nothing below counts a
+        thing it has done since.
+      </p>
+
+      <NuxtLink
+        to="/devices"
+        class="action viz-mono viz-focus"
+      >
+        Sort out the account binding
+      </NuxtLink>
+    </section>
+
     <section
       v-for="device in arrivals"
       :key="`reporting-${device.id}`"
@@ -144,6 +192,19 @@ function dismiss(id: string) {
 
 .notice-fix {
   border-left: 3px solid var(--viz-status-warning);
+}
+
+/* A refusal is a broken pipeline, not a chore, so it takes the critical end of
+   the status palette. The glyph and the words say it without the colour. */
+.notice-broken {
+  border-left: 3px solid var(--viz-status-critical);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--viz-status-critical);
 }
 
 .headline {

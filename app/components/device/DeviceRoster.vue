@@ -42,7 +42,8 @@ function stoppedAt(device: DeviceInfo): string | null {
     >
       <table class="table">
         <caption class="sr-only">
-          Every machine, its status, the prefix of its current token, and what it has reported
+          Every machine, its status, the account its token is bound to, the prefix of that token,
+          and what it has reported
         </caption>
 
         <thead>
@@ -58,6 +59,12 @@ function stoppedAt(device: DeviceInfo): string | null {
               class="head"
             >
               Status
+            </th>
+            <th
+              scope="col"
+              class="head"
+            >
+              Account
             </th>
             <th
               scope="col"
@@ -96,6 +103,7 @@ function stoppedAt(device: DeviceInfo): string | null {
           v-for="device in devices"
           :key="device.id"
           :data-status="device.status"
+          :data-conflict="device.conflict ? 'yes' : null"
         >
           <tr>
             <th
@@ -116,6 +124,10 @@ function stoppedAt(device: DeviceInfo): string | null {
                 :status="device.status"
                 :at="stoppedAt(device)"
               />
+            </td>
+
+            <td class="cell">
+              <DeviceAccountCell :device="device" />
             </td>
 
             <td class="cell viz-mono">
@@ -143,10 +155,23 @@ function stoppedAt(device: DeviceInfo): string | null {
             </td>
           </tr>
 
+          <tr v-if="device.conflict">
+            <td
+              class="cell inset"
+              colspan="8"
+            >
+              <DeviceConflictBlock
+                :device="device"
+                :conflict="device.conflict"
+                @release="$emit('act', 'release', device)"
+              />
+            </td>
+          </tr>
+
           <tr v-if="STATUS[device.status].setup">
             <td
               class="cell inset"
-              colspan="7"
+              colspan="8"
             >
               <DeviceSetupBlock
                 :device="device"
@@ -159,7 +184,7 @@ function stoppedAt(device: DeviceInfo): string | null {
           <tr v-if="pane && pane.device.id === device.id">
             <td
               class="cell inset"
-              colspan="7"
+              colspan="8"
             >
               <DevicePanel
                 :key="pane.action"
@@ -181,6 +206,7 @@ function stoppedAt(device: DeviceInfo): string | null {
         :key="device.id"
         class="card"
         :data-status="device.status"
+        :data-conflict="device.conflict ? 'yes' : null"
       >
         <div class="card-head">
           <h3 class="card-name">
@@ -197,6 +223,13 @@ function stoppedAt(device: DeviceInfo): string | null {
             :status="device.status"
             :at="stoppedAt(device)"
           />
+        </div>
+
+        <div class="account-line">
+          <p class="viz-eyebrow">
+            Account
+          </p>
+          <DeviceAccountCell :device="device" />
         </div>
 
         <dl class="facts">
@@ -242,6 +275,13 @@ function stoppedAt(device: DeviceInfo): string | null {
           </dl>
         </details>
 
+        <DeviceConflictBlock
+          v-if="device.conflict"
+          :device="device"
+          :conflict="device.conflict"
+          @release="$emit('act', 'release', device)"
+        />
+
         <DeviceActions
           :device="device"
           :open="openOn(device)"
@@ -278,10 +318,18 @@ function stoppedAt(device: DeviceInfo): string | null {
   overscroll-behavior-x: contain;
 }
 
+/* Sizes to its content and stretches only when there is room. A hard 100% would
+   squeeze the actions column until every row's buttons stacked. */
 .table {
-  width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+/* A wrapping flex row reports one button as its minimum width, so auto table
+   layout collapses the column and stacks them. The cards still wrap. */
+.wide :deep(.actions) {
+  flex-wrap: nowrap;
 }
 
 .head {
@@ -335,6 +383,18 @@ function stoppedAt(device: DeviceInfo): string | null {
    shadow rather than a border keeps the sticky column's width unchanged. */
 [data-status="pending"] tr > :first-child {
   box-shadow: inset 2px 0 0 var(--viz-status-warning);
+}
+
+/* A refused credential is the one thing here the operator must not scroll past,
+   so it outranks the pending rule wherever a machine could carry both. */
+[data-conflict] tr > :first-child,
+[data-conflict].card {
+  box-shadow: inset 2px 0 0 var(--viz-status-critical);
+}
+
+.account-line {
+  display: grid;
+  gap: 5px;
 }
 
 .swatch {
