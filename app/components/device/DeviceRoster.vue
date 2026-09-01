@@ -12,6 +12,7 @@ const props = defineProps<{
 
 defineEmits<{
   act: [action: DeviceAction, device: DeviceInfo]
+  allow: [email: string]
   confirm: [result: PanelResult]
   cancel: []
 }>()
@@ -164,6 +165,7 @@ function stoppedAt(device: DeviceInfo): string | null {
                 :device="device"
                 :conflict="device.conflict"
                 @release="$emit('act', 'release', device)"
+                @allow="email => $emit('allow', email)"
               />
             </td>
           </tr>
@@ -280,6 +282,7 @@ function stoppedAt(device: DeviceInfo): string | null {
           :device="device"
           :conflict="device.conflict"
           @release="$emit('act', 'release', device)"
+          @allow="email => $emit('allow', email)"
         />
 
         <DeviceActions

@@ -3,10 +3,15 @@ import type { DeviceAccountConflict, DeviceInfo } from '#shared/types'
 
 const props = defineProps<{ device: DeviceInfo, conflict: DeviceAccountConflict }>()
 
-defineEmits<{ release: [] }>()
+const emit = defineEmits<{ release: [], allow: [email: string] }>()
 
 const owner = computed(() => props.device.account ? accountLabel(props.device.account) : 'the account that claimed it')
+const refused = computed(() => accountLabel(props.conflict))
 const attempts = computed(() => props.conflict.count === 1 ? 'once' : `${formatCount(props.conflict.count)} times`)
+
+function allow() {
+  if (props.conflict.email) emit('allow', props.conflict.email)
+}
 </script>
 
 <template>
@@ -41,25 +46,39 @@ const attempts = computed(() => props.conflict.count === 1 ? 'once' : `${formatC
           Account refused
         </dt>
         <dd class="viz-mono">
-          {{ shortAccountId(conflict.uuid) }}
+          {{ refused }}
         </dd>
       </div>
     </dl>
 
     <p class="viz-prose">
-      There are two ways out. Sign back into <span class="viz-mono">{{ owner }}</span> on that
-      machine and reporting resumes by itself, with nothing to change here. Or release the binding,
-      which drops the claim so the next account to report takes the machine over.
+      There are three ways out. Sign back into <span class="viz-mono">{{ owner }}</span> on that
+      machine and reporting resumes by itself, with nothing to change here. Release the binding,
+      which drops the claim so the next account to report takes the machine over. Or allow this
+      account, which lets its telemetry land from this machine while the machine stays bound to
+      <span class="viz-mono">{{ owner }}</span>.
     </p>
 
-    <button
-      type="button"
-      class="release viz-mono viz-focus"
-      :aria-label="ACTION.release.aria(device.name)"
-      @click="$emit('release')"
-    >
-      Release the binding
-    </button>
+    <div class="choices">
+      <button
+        type="button"
+        class="release viz-mono viz-focus"
+        :aria-label="ACTION.release.aria(device.name)"
+        @click="emit('release')"
+      >
+        Release the binding
+      </button>
+
+      <button
+        v-if="conflict.email"
+        type="button"
+        class="allow viz-mono viz-focus"
+        :aria-label="`Allow ${refused} to report from every machine`"
+        @click="allow"
+      >
+        Allow this account
+      </button>
+    </div>
   </div>
 </template>
 
@@ -107,12 +126,28 @@ const attempts = computed(() => props.conflict.count === 1 ? 'once' : `${formatC
   color: var(--viz-ink);
 }
 
-.release {
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 16px;
+}
+
+.release {
   padding: 7px 16px;
   border: 1px solid var(--viz-ink);
   background: var(--viz-ink);
   color: var(--viz-surface);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.allow {
+  padding: 7px 16px;
+  border: 1px solid var(--viz-ink);
+  background: transparent;
+  color: var(--viz-ink);
   font-size: 12px;
   letter-spacing: 0.04em;
   cursor: pointer;

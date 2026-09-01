@@ -4,7 +4,14 @@ import type { DeviceAction, PanelResult, SecretReason } from '~/utils/deviceStat
 
 useSeoMeta({ title: 'Machines · Claude Code Telemetry' })
 
-const { data, pending, error, unavailable, create, rename, rotate, revoke, release, destroy } = useDevices()
+const { data, pending, error, unavailable, refresh: refreshDevices, create, rename, rotate, revoke, release, destroy } = useDevices()
+
+const {
+  data: allowed,
+  unavailable: allowlistUnavailable,
+  add: allowAccount,
+  remove: removeAccount
+} = useAllowlist()
 
 const devices = computed(() => sortDevices(data.value ?? []))
 const otlpEndpoint = `${useRequestURL().origin}/api/otlp`
@@ -26,6 +33,11 @@ const failure = ref<string | null>(null)
 const newName = ref('')
 const adding = ref(false)
 const addFailure = ref<string | null>(null)
+
+const allowlist = computed(() => allowed.value ?? [])
+const newEmail = ref('')
+const allowBusy = ref(false)
+const allowFailure = ref<string | null>(null)
 
 // A 404 here is ambiguous in a way the generic message cannot be: the route may
 // not be deployed yet, or the machine may genuinely be gone.
@@ -53,6 +65,45 @@ async function add() {
     addFailure.value = describeFailure(err, 'add the machine')
   } finally {
     adding.value = false
+  }
+}
+
+async function allow(email: string): Promise<boolean> {
+  const address = email.trim()
+  if (address.length === 0) {
+    allowFailure.value = 'Give the email of the account Claude Code signs in as on that machine.'
+    return false
+  }
+
+  allowBusy.value = true
+  allowFailure.value = null
+  try {
+    await allowAccount(address)
+    // The server clears a machine's refusal the next time that account's telemetry is accepted,
+    // so the roster is re-read rather than cleared here. Nothing has been accepted yet.
+    await refreshDevices()
+    return true
+  } catch (err) {
+    allowFailure.value = describeFailure(err, 'allow the account')
+    return false
+  } finally {
+    allowBusy.value = false
+  }
+}
+
+async function submitAllow() {
+  if (await allow(newEmail.value)) newEmail.value = ''
+}
+
+async function disallow(email: string) {
+  allowBusy.value = true
+  allowFailure.value = null
+  try {
+    await removeAccount(email)
+  } catch (err) {
+    allowFailure.value = describeFailure(err, 'remove the account')
+  } finally {
+    allowBusy.value = false
   }
 }
 
@@ -219,8 +270,19 @@ async function confirm(result: PanelResult) {
         :busy="busy"
         :failure="failure"
         @act="act"
+        @allow="allow"
         @confirm="confirm"
         @cancel="pane = { kind: 'idle' }"
+      />
+
+      <DeviceAllowlist
+        v-model="newEmail"
+        :entries="allowlist"
+        :unavailable="allowlistUnavailable"
+        :busy="allowBusy"
+        :failure="allowFailure"
+        @submit="submitAllow"
+        @remove="disallow"
       />
     </template>
 

@@ -54,7 +54,7 @@ export function fixtureDevices(): DeviceInfo[] {
       revokedAt: null,
       sessions: 12,
       account: { uuid: 'a1f0c7d2-3b46-4e58-9c01-7d2e4f6a8b30', email: 'you@example.com' },
-      conflict: { uuid: 'f7b31d90-6c25-4a17-8e43-05b9c1d7e264', at: '2026-08-27T06:12:00.000Z', count: 14 }
+      conflict: { uuid: 'f7b31d90-6c25-4a17-8e43-05b9c1d7e264', email: 'roommate@example.com', at: '2026-08-27T06:12:00.000Z', count: 14 }
     },
     {
       id: PENDING,
