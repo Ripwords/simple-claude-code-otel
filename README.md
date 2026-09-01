@@ -163,6 +163,16 @@ page can tell you why the machine went quiet instead of leaving you to guess.
 One refused batch never locks out the rightful account. Sign back in on that
 machine and it keeps reporting.
 
+The allowlist is the exception. An account on it may report from any machine,
+including one bound to somebody else. Its telemetry lands under the machine it
+was sent from, and that machine stays bound to the account it already had,
+because a guest is not a new owner.
+
+Every account a machine is bound to is on the list already. That is why an
+account can always report from its own machines. Releasing or deleting a machine
+takes its account off the list again. You add and remove everyone else by hand on
+the machines page.
+
 To hand a machine to a different account on purpose, release the binding on the
 machines page. The next telemetry claims it afresh.
 
