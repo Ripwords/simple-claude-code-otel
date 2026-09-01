@@ -7,7 +7,7 @@ import { db } from './db'
 const UNIQUE_VIOLATION = '23505'
 
 const DEVICE_COLUMNS = `d.id, d.name, d.token_prefix, d.created_at, d.first_seen, d.last_seen_at, d.revoked_at,
-  d.account_uuid, d.account_email, d.rejected_account_uuid, d.rejected_at, d.rejected_count,
+  d.account_uuid, d.account_email, d.rejected_account_uuid, d.rejected_account_email, d.rejected_at, d.rejected_count,
   (select count(*) from telemetry.session s where s.device_id = d.id) as sessions`
 
 export const deviceNameSchema = z.string().trim().min(1).max(64)
@@ -101,7 +101,7 @@ export async function revokeDevice(id: string): Promise<DeviceInfo> {
 export async function releaseDevice(id: string): Promise<DeviceInfo> {
   const rows = await db().query(
     `with updated as (update telemetry.device set account_uuid = null, account_email = null,
-       rejected_account_uuid = null, rejected_at = null, rejected_count = 0 where id = $1 returning *)
+       rejected_account_uuid = null, rejected_account_email = null, rejected_at = null, rejected_count = 0 where id = $1 returning *)
      select ${DEVICE_COLUMNS} from updated d`,
     [id]
   )
@@ -163,7 +163,13 @@ function toConflict(row: Record<string, unknown>): DeviceAccountConflict | null 
   const count = Number(row.rejected_count ?? 0)
   const at = timestamp(row.rejected_at)
   if (count === 0 || at === null) return null
-  return { uuid: String(row.rejected_account_uuid), at, count }
+  const email = row.rejected_account_email
+  return {
+    uuid: String(row.rejected_account_uuid),
+    email: email === null || email === undefined ? null : String(email),
+    at,
+    count
+  }
 }
 
 function timestamp(value: unknown): string | null {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { compareDevices, deviceNameSchema, parseDeviceId, toDeviceInfo } from '../server/utils/deviceQueries'
-import { accountConflictError, decideAccount, deviceStatus } from '../server/utils/deviceToken'
+import { accountConflictError, deviceStatus } from '../server/utils/deviceToken'
 import { TOKEN_PLACEHOLDER, setupCommand } from '../app/utils/deviceStatus'
 import type { DeviceInfo, DeviceStatus } from '../shared/types'
 
@@ -115,6 +115,7 @@ describe('toDeviceInfo', () => {
     account_uuid: null,
     account_email: null,
     rejected_account_uuid: null,
+    rejected_account_email: null,
     rejected_at: null,
     rejected_count: '0'
   }
@@ -161,47 +162,54 @@ describe('toDeviceInfo', () => {
       ...row,
       account_uuid: CLAIMED_ACCOUNT,
       rejected_account_uuid: OTHER_ACCOUNT,
+      rejected_account_email: 'colleague@example.com',
       rejected_at: '2026-01-02T03:04:05Z',
       rejected_count: '3'
     })
 
-    expect(rejected.conflict).toEqual({ uuid: OTHER_ACCOUNT, at: '2026-01-02T03:04:05.000Z', count: 3 })
-  })
-})
-
-describe('decideAccount', () => {
-  const batch = { uuid: CLAIMED_ACCOUNT, email: 'thetechyhub@gmail.com' }
-
-  it('claims an unclaimed device for the account that first reported', () => {
-    expect(decideAccount(null, batch)).toEqual({ kind: 'claim', account: batch })
+    expect(rejected.conflict).toEqual({
+      uuid: OTHER_ACCOUNT,
+      email: 'colleague@example.com',
+      at: '2026-01-02T03:04:05.000Z',
+      count: 3
+    })
   })
 
-  it('allows the account that already holds the claim', () => {
-    expect(decideAccount(CLAIMED_ACCOUNT, batch)).toEqual({ kind: 'allow' })
-  })
+  it('leaves the conflict email null when the refused account carried no address', () => {
+    const rejected = toDeviceInfo({
+      ...row,
+      account_uuid: CLAIMED_ACCOUNT,
+      rejected_account_uuid: OTHER_ACCOUNT,
+      rejected_at: '2026-01-02T03:04:05Z',
+      rejected_count: '3'
+    })
 
-  it('rejects a second account and names both sides', () => {
-    expect(decideAccount(OTHER_ACCOUNT, batch)).toEqual({ kind: 'reject', claimed: OTHER_ACCOUNT, presented: CLAIMED_ACCOUNT })
-  })
-
-  it('allows a batch with no account, so a signed-out session is not dropped', () => {
-    expect(decideAccount(OTHER_ACCOUNT, null)).toEqual({ kind: 'allow' })
-    expect(decideAccount(null, null)).toEqual({ kind: 'allow' })
+    expect(rejected.conflict).toEqual({ uuid: OTHER_ACCOUNT, email: null, at: '2026-01-02T03:04:05.000Z', count: 3 })
   })
 })
 
 describe('accountConflictError', () => {
+  const PRESENTED_EMAIL = 'colleague@example.com'
+  const presented = { uuid: OTHER_ACCOUNT, email: PRESENTED_EMAIL }
+
+  function body(): string {
+    const err = accountConflictError(CLAIMED_ACCOUNT, presented)
+    return `${JSON.stringify(err)} ${err.message}`
+  }
+
   it('is a 403 so an operator can tell a wrong account from a bad token', () => {
-    expect(accountConflictError(CLAIMED_ACCOUNT, OTHER_ACCOUNT).statusCode).toBe(403)
+    expect(accountConflictError(CLAIMED_ACCOUNT, presented).statusCode).toBe(403)
   })
 
   it('leaks neither full uuid into the serialised body', () => {
-    const body = JSON.stringify(accountConflictError(CLAIMED_ACCOUNT, OTHER_ACCOUNT))
+    expect(body()).not.toContain(CLAIMED_ACCOUNT)
+    expect(body()).not.toContain(OTHER_ACCOUNT)
+    expect(body()).toContain(CLAIMED_ACCOUNT.slice(0, 8))
+    expect(body()).toContain(OTHER_ACCOUNT.slice(0, 8))
+  })
 
-    expect(body).not.toContain(CLAIMED_ACCOUNT)
-    expect(body).not.toContain(OTHER_ACCOUNT)
-    expect(body).toContain(CLAIMED_ACCOUNT.slice(0, 8))
-    expect(body).toContain(OTHER_ACCOUNT.slice(0, 8))
+  it('leaks the presented email into neither the body nor the message', () => {
+    expect(body()).not.toContain(PRESENTED_EMAIL)
   })
 })
 

@@ -32,8 +32,16 @@ export interface DeviceAccount {
 /** The last time telemetry arrived under a different account and was refused. */
 export interface DeviceAccountConflict {
   uuid: string
+  email: string | null
   at: string
   count: number
+}
+
+/** 'device' entries are implied by a machine's claimed account and cannot be removed directly. */
+export interface AllowedEmail {
+  email: string
+  source: 'device' | 'manual'
+  addedAt: string | null
 }
 
 export interface DeviceInfo {
