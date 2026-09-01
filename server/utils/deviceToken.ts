@@ -13,6 +13,7 @@ export interface AuthenticatedDevice {
   id: string
   name: string
   accountUuid: string | null
+  refusing: boolean
 }
 
 export type AccountDecision
@@ -48,14 +49,19 @@ export async function authenticateDevice(header: string | undefined): Promise<Au
   if (!token) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const rows = await db().query(
-    'select id, name, revoked_at, account_uuid from telemetry.device where token_hash = $1',
+    'select id, name, revoked_at, account_uuid, rejected_count from telemetry.device where token_hash = $1',
     [hashToken(token)]
   )
 
   const device = rows[0]
   if (!device || device.revoked_at) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
-  return { id: String(device.id), name: String(device.name), accountUuid: text(device.account_uuid) }
+  return {
+    id: String(device.id),
+    name: String(device.name),
+    accountUuid: text(device.account_uuid),
+    refusing: Number(device.rejected_count ?? 0) > 0
+  }
 }
 
 // Trust on first use, like an SSH host key: telemetry config lives in ~/.claude/settings.json,
@@ -105,15 +111,12 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
     decision = decideAccount(claimed, batch, true)
   }
 
-  if (decision.kind === 'guest') {
-    // The stored conflict would otherwise keep telling the operator that none of this account's
-    // telemetry entered the data while it is in fact landing. Scoped to the guest's own uuid, so
-    // a third account's refusal is still waiting for the operator when it is the one on record.
-    await db().query(
-      `update telemetry.device set rejected_account_uuid = null, rejected_account_email = null,
-       rejected_at = null, rejected_count = 0 where id = $1::uuid and rejected_account_uuid = $2`,
-      [device.id, decision.account.uuid]
-    )
+  // A stored refusal is a live claim that this machine is contributing nothing, so it cannot
+  // outlive the batch that disproves it. The owner signing back in is the commonest way out of
+  // a conflict and used to leave the dashboard warning about a machine that had long resumed.
+  // A guest clears only its own refusal, so a third account's is still waiting for the operator.
+  if (batch && (decision.kind === 'allow' || decision.kind === 'guest')) {
+    if (device.refusing) await clearConflict(device.id, decision.kind === 'guest' ? decision.account.uuid : null)
     return
   }
 
@@ -127,6 +130,15 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
     [device.id, decision.presented.uuid, accountEmail(decision.presented.email)]
   )
   throw accountConflictError(decision.claimed, decision.presented)
+}
+
+function clearConflict(deviceId: string, onlyFor: string | null): Promise<unknown> {
+  return db().query(
+    `update telemetry.device set rejected_account_uuid = null, rejected_account_email = null,
+     rejected_at = null, rejected_count = 0
+     where id = $1::uuid and ($2::text is null or rejected_account_uuid = $2)`,
+    [deviceId, onlyFor]
+  )
 }
 
 function text(value: unknown): string | null {

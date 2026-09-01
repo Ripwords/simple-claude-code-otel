@@ -100,6 +100,13 @@ ok('the hand-added entry is gone', ((await call('GET', '/api/allowlist')).json ?
 
 ok('the rightful account still works', (await call('POST', '/api/otlp/v1/metrics', metrics, token)).status === 200)
 
+const refusedAgain = (await call('GET', '/api/devices')).json[0]
+ok('the owner is refusing again after the email came off', refusedAgain.conflict !== null, `count=${refusedAgain.conflict?.count}`)
+
+await call('POST', '/api/otlp/v1/metrics', rewriteAccount(metrics, bound.account.uuid, bound.account.email), token)
+const resumed = (await call('GET', '/api/devices')).json[0]
+ok('the owner signing back in clears the warning it was told would clear', resumed.conflict === null)
+
 await call('POST', `/api/devices/${id}/release`)
 const released = (await call('GET', '/api/devices')).json[0]
 ok('release clears the binding and the conflict', released.account === null && released.conflict === null)
