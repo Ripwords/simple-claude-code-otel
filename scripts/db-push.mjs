@@ -8,7 +8,13 @@ if (!url) {
 }
 
 const sql = neon(url)
+// Comments are stripped before the split, not after. A semicolon inside a `--` comment would
+// otherwise cut the file mid-statement and leave a comment-only fragment, which Postgres
+// rejects as a syntax error at position 1 with no hint about where it came from.
 const statements = readFileSync('server/database/schema.sql', 'utf8')
+  .split('\n')
+  .filter(line => !line.trim().startsWith('--'))
+  .join('\n')
   .split(';')
   .map(s => s.trim())
   .filter(Boolean)
