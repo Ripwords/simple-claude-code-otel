@@ -1,5 +1,6 @@
 import { buildDeviceLivenessUpdate, buildEventInserts, buildSessionUpserts, transformLogs, type OtlpLogsBody } from '../../../utils/otlp'
 import { authenticateDevice, enforceDeviceAccount } from '../../../utils/deviceToken'
+import { runIngest } from '../../../utils/ingest'
 
 export default defineEventHandler(async (event) => {
   const device = await authenticateDevice(getRequestHeader(event, 'authorization'))
@@ -10,15 +11,17 @@ export default defineEventHandler(async (event) => {
 
   await enforceDeviceAccount(device, result.account)
 
+  // Liveness spans every record the batch carried, not just the stored ones, so a machine
+  // sending only unstored events still reads as reporting rather than gone quiet.
   const statements = [
     ...buildSessionUpserts(result.sessions),
     ...buildEventInserts(result.rows),
-    ...buildDeviceLivenessUpdate(device.id, result.rows)
+    ...buildDeviceLivenessUpdate(device.id, result.seenAt)
   ]
-  if (statements.length > 0) {
-    const sql = db()
-    await sql.transaction(statements.map(statement => sql.query(statement.text, statement.params)))
-  }
 
-  return { accepted: result.rows.length }
+  return await runIngest(statements, {
+    accepted: result.rows.length + result.dropped,
+    stored: result.rows.length,
+    dropped: result.dropped
+  })
 })

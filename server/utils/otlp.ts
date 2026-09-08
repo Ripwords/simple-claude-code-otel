@@ -113,7 +113,7 @@ export interface Statement {
 }
 
 export type TransformResult<Row>
-  = | { ok: true, rows: Row[], sessions: SessionRow[], account: BatchAccount | null }
+  = | { ok: true, rows: Row[], sessions: SessionRow[], account: BatchAccount | null, seenAt: Date[], dropped: number }
     | { ok: false, error: string }
 
 export const FIELD_SEP = '\u001f'
@@ -135,19 +135,29 @@ export const SESSION_RESOURCE_ATTR_KEYS = [
   'host.arch'
 ] as const
 
-export const NOISY_EVENT_NAMES = [
-  'claude_code.hook_execution_start',
-  'claude_code.hook_execution_complete',
-  'claude_code.hook_registered',
-  'claude_code.plugin_loaded',
-  'claude_code.mcp_server_connection'
-] as const
+// What ingest is willing to store, and the only attrs it keeps on each. Claude Code emits
+// twenty-odd event names carrying a few hundred bytes of attributes apiece; the dashboard
+// reads three names and three keys. Storing the rest cost 400 MB in twelve days and answered
+// no question, so the wire format is projected down to what something actually queries.
+// Adding a panel means adding its name and keys here first.
+export const EVENT_ATTR_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+  // Counted, and timed off the duration_ms column. None of its eighteen attrs are read.
+  'claude_code.api_request': [],
+  'claude_code.api_error': ['status_code'],
+  'claude_code.tool_result': ['tool_name', 'success']
+}
+
+export const METRIC_ATTR_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+  'claude_code.session.count': [],
+  'claude_code.cost.usage': [],
+  'claude_code.token.usage': ['type'],
+  'claude_code.lines_of_code.count': ['type'],
+  'claude_code.active_time.total': [],
+  'claude_code.code_edit_tool.decision': ['decision']
+}
 
 const DELTA_TEMPORALITY = 1
 const CHUNK_SIZE = 500
-
-const METRIC_STRIPPED_KEYS = new Set<string>(['model', 'session.id', 'device.name', ...SESSION_ATTR_KEYS])
-const EVENT_STRIPPED_KEYS = new Set<string>(['model', 'session.id', 'duration_ms', 'device.name', ...SESSION_ATTR_KEYS])
 
 export function attrsToMap(attrs: OtlpAttr[] | undefined): AttrMap {
   const map: AttrMap = {}
@@ -176,7 +186,9 @@ export function dedupeKey(parts: string[]): string {
 export function transformMetrics(body: OtlpMetricsBody, deviceId: string): TransformResult<MetricRow> {
   const rows: MetricRow[] = []
   const sessions = new Map<string, SessionRow>()
+  const seenAt: Date[] = []
   let account: BatchAccount | null = null
+  let dropped = 0
 
   for (const resourceMetrics of body.resourceMetrics ?? []) {
     const resourceAttrs = attrsToMap(resourceMetrics.resource?.attributes)
@@ -196,10 +208,23 @@ export function transformMetrics(body: OtlpMetricsBody, deviceId: string): Trans
           }
         }
 
+        const kept = METRIC_ATTR_ALLOWLIST[name]
+
         for (const point of sum.dataPoints ?? []) {
           const pointAttrs = attrsToMap(point.attributes)
           const ts = nanosToDate(point.timeUnixNano ?? 0)
           const sessionId = stringAttr(pointAttrs, 'session.id')
+
+          // Session, account and liveness are read off every datapoint, stored or not: a
+          // machine emitting only unstored telemetry is still a machine that reported.
+          seenAt.push(ts)
+          if (!account) account = readAccount(pointAttrs)
+          accumulateSession(sessions, sessionId, deviceId, ts, pointAttrs, resourceAttrs)
+
+          if (!kept) {
+            dropped += 1
+            continue
+          }
 
           rows.push({
             dedupeKey: dedupeKey([
@@ -215,23 +240,22 @@ export function transformMetrics(body: OtlpMetricsBody, deviceId: string): Trans
             metric: name,
             model: stringAttr(pointAttrs, 'model'),
             value: point.asDouble ?? Number(point.asInt ?? 0),
-            attrs: stripKeys(pointAttrs, METRIC_STRIPPED_KEYS)
+            attrs: keepKeys(pointAttrs, kept)
           })
-
-          if (!account) account = readAccount(pointAttrs)
-          accumulateSession(sessions, sessionId, deviceId, ts, pointAttrs, resourceAttrs)
         }
       }
     }
   }
 
-  return { ok: true, rows, sessions: [...sessions.values()], account }
+  return { ok: true, rows, sessions: [...sessions.values()], account, seenAt, dropped }
 }
 
 export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformResult<EventRow> {
   const rows: EventRow[] = []
   const sessions = new Map<string, SessionRow>()
+  const seenAt: Date[] = []
   let account: BatchAccount | null = null
+  let dropped = 0
 
   for (const resourceLogs of body.resourceLogs ?? []) {
     const resourceAttrs = attrsToMap(resourceLogs.resource?.attributes)
@@ -244,6 +268,16 @@ export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformRe
         const recordAttrs = attrsToMap(record.attributes)
         const ts = nanosToDate(record.timeUnixNano ?? 0)
         const sessionId = stringAttr(recordAttrs, 'session.id')
+
+        seenAt.push(ts)
+        if (!account) account = readAccount(recordAttrs)
+        accumulateSession(sessions, sessionId, deviceId, ts, recordAttrs, resourceAttrs)
+
+        const kept = EVENT_ATTR_ALLOWLIST[name]
+        if (!kept) {
+          dropped += 1
+          continue
+        }
 
         rows.push({
           dedupeKey: dedupeKey([
@@ -258,16 +292,13 @@ export function transformLogs(body: OtlpLogsBody, deviceId: string): TransformRe
           name,
           model: stringAttr(recordAttrs, 'model'),
           durationMs: toDurationMs(recordAttrs['duration_ms']),
-          attrs: stripKeys(recordAttrs, EVENT_STRIPPED_KEYS)
+          attrs: keepKeys(recordAttrs, kept)
         })
-
-        if (!account) account = readAccount(recordAttrs)
-        accumulateSession(sessions, sessionId, deviceId, ts, recordAttrs, resourceAttrs)
       }
     }
   }
 
-  return { ok: true, rows, sessions: [...sessions.values()], account }
+  return { ok: true, rows, sessions: [...sessions.values()], account, seenAt, dropped }
 }
 
 export function buildMetricInserts(rows: MetricRow[]): Statement[] {
@@ -370,10 +401,11 @@ function sortedPairs(attrs: AttrMap): string {
     .join(PAIR_SEP)
 }
 
-function stripKeys(attrs: AttrMap, stripped: Set<string>): AttrMap {
+function keepKeys(attrs: AttrMap, keys: readonly string[]): AttrMap {
   const kept: AttrMap = {}
-  for (const [key, value] of Object.entries(attrs)) {
-    if (!stripped.has(key)) kept[key] = value
+  for (const key of keys) {
+    const value = attrs[key]
+    if (value !== undefined) kept[key] = value
   }
   return kept
 }
@@ -399,14 +431,14 @@ function chunk<T>(rows: T[]): T[][] {
 // over the stored value make the write idempotent under replay and correct for out-of-order batches,
 // which matters because the null-to-set transition of first_seen is what announces a provisioned
 // machine as reporting.
-export function buildDeviceLivenessUpdate(deviceId: string, rows: readonly { ts: Date }[]): Statement[] {
-  if (rows.length === 0) return []
+export function buildDeviceLivenessUpdate(deviceId: string, seenAt: readonly Date[]): Statement[] {
+  if (seenAt.length === 0) return []
 
-  let earliest = rows[0]!.ts
-  let latest = rows[0]!.ts
-  for (const row of rows) {
-    if (row.ts < earliest) earliest = row.ts
-    if (row.ts > latest) latest = row.ts
+  let earliest = seenAt[0]!
+  let latest = seenAt[0]!
+  for (const ts of seenAt) {
+    if (ts < earliest) earliest = ts
+    if (ts > latest) latest = ts
   }
 
   return [{

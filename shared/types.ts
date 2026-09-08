@@ -12,9 +12,7 @@ export type MetricKey = keyof typeof METRICS
 export const EVENTS = {
   apiRequest: 'claude_code.api_request',
   apiError: 'claude_code.api_error',
-  toolResult: 'claude_code.tool_result',
-  toolDecision: 'claude_code.tool_decision',
-  userPrompt: 'claude_code.user_prompt'
+  toolResult: 'claude_code.tool_result'
 } as const
 
 export type Bucket = 'hour' | 'day'

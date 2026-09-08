@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import logsFixture from './fixtures/logs.json'
 import metricsFixture from './fixtures/metrics.json'
 import {
+  EVENT_ATTR_ALLOWLIST,
+  METRIC_ATTR_ALLOWLIST,
   SESSION_ATTR_KEYS,
   buildDeviceLivenessUpdate,
   buildMetricInserts,
@@ -10,6 +12,7 @@ import {
   transformMetrics,
   type BatchAccount,
   type MetricRow,
+  type OtlpLogRecord,
   type OtlpLogsBody,
   type OtlpMetricsBody
 } from '../server/utils/otlp'
@@ -85,7 +88,7 @@ function renameDevice(body: OtlpMetricsBody, name: string): OtlpMetricsBody {
   return body
 }
 
-function expectOk<Row>(result: { ok: true, rows: Row[], sessions: unknown[], account: BatchAccount | null } | { ok: false, error: string }) {
+function expectOk<Row>(result: { ok: true, rows: Row[], sessions: unknown[], account: BatchAccount | null, seenAt: Date[], dropped: number } | { ok: false, error: string }) {
   if (!result.ok) throw new Error(`expected a successful transform, got: ${result.error}`)
   return result
 }
@@ -113,6 +116,22 @@ function twoPointBody(firstNano: string, secondNano: string): OtlpMetricsBody {
       }]
     }]
   }
+}
+
+function logRecord(name: string, attrs: Record<string, string | number>): OtlpLogRecord {
+  const value = (raw: string | number) => typeof raw === 'number' ? { intValue: raw } : { stringValue: raw }
+  return {
+    timeUnixNano: '1787795894906000000',
+    body: { stringValue: name },
+    attributes: [
+      { key: 'session.id', value: { stringValue: 'sess-1' } },
+      ...Object.entries(attrs).map(([key, raw]) => ({ key, value: value(raw) }))
+    ]
+  }
+}
+
+function syntheticLogs(records: OtlpLogRecord[]): OtlpLogsBody {
+  return { resourceLogs: [{ resource: { attributes: [] }, scopeLogs: [{ logRecords: records }] }] }
 }
 
 function syntheticRows(count: number): MetricRow[] {
@@ -261,16 +280,92 @@ describe('transformLogs', () => {
   })
 
   it('leaves durationMs null on records without the attribute', () => {
-    const result = expectOk(transformLogs(logsBody, DEVICE_ID))
-    const hook = result.rows.find(row => row.name === 'claude_code.hook_execution_start')
+    const result = expectOk(transformLogs(syntheticLogs([logRecord('claude_code.api_error', { status_code: '429' })]), DEVICE_ID))
 
-    expect(hook).toBeDefined()
-    expect(hook!.durationMs).toBeNull()
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]!.durationMs).toBeNull()
+  })
+})
+
+describe('event allowlist', () => {
+  it('stores only the allowlisted names and reports the rest as dropped', () => {
+    const result = expectOk(transformLogs(cloneLogs(), DEVICE_ID))
+
+    expect(result.rows.map(row => row.name)).toEqual(['claude_code.api_request'])
+    expect(result.dropped).toBe(8)
   })
 
-  it('keeps non-session resource attributes off the event row', () => {
-    const result = expectOk(transformLogs(logsBody, DEVICE_ID))
-    for (const row of result.rows) expect(row.attrs).toHaveProperty('device.role')
+  it('keeps exactly the allowlisted attrs and nothing else', () => {
+    const body = syntheticLogs([
+      logRecord('claude_code.tool_result', { 'tool_name': 'Edit', 'success': 'true', 'tool_use_id': 'toolu_1', 'event.sequence': 347 }),
+      logRecord('claude_code.api_error', { status_code: '429', request_id: 'req_1' }),
+      logRecord('claude_code.api_request', { cost_usd: 0.08, request_id: 'req_2' })
+    ])
+    const rows = expectOk(transformLogs(body, DEVICE_ID)).rows
+
+    expect(rows.map(row => row.attrs)).toEqual([
+      { tool_name: 'Edit', success: 'true' },
+      { status_code: '429' },
+      {}
+    ])
+  })
+
+  it('still promotes model and duration_ms to columns on a kept row', () => {
+    const body = syntheticLogs([logRecord('claude_code.tool_result', { tool_name: 'Bash', duration_ms: 1234, model: 'claude-opus-5' })])
+    const [row] = expectOk(transformLogs(body, DEVICE_ID)).rows
+
+    expect(row!.durationMs).toBe(1234)
+    expect(row!.model).toBe('claude-opus-5')
+    expect(row!.attrs).toEqual({ tool_name: 'Bash' })
+  })
+
+  // A machine that only emits hook and plugin events must not look like it went quiet,
+  // and must not lose its account claim, just because nothing it sent is worth storing.
+  it('claims the account, upserts the session and reports liveness for a batch it stores nothing from', () => {
+    const body = cloneLogs()
+    for (const resourceLogs of body.resourceLogs ?? []) {
+      for (const scope of resourceLogs.scopeLogs ?? []) {
+        scope.logRecords = (scope.logRecords ?? []).filter(record => record.body?.stringValue !== 'claude_code.api_request')
+      }
+    }
+    const result = expectOk(transformLogs(body, DEVICE_ID))
+
+    expect(result.rows).toEqual([])
+    expect(result.dropped).toBe(8)
+    expect(result.sessions).toHaveLength(1)
+    expect(result.account).toEqual({ uuid: ACCOUNT_UUID, email: ACCOUNT_EMAIL })
+    expect(result.seenAt).toHaveLength(8)
+    expect(buildDeviceLivenessUpdate(DEVICE_ID, result.seenAt)).toHaveLength(1)
+  })
+
+  it('drops metric names outside the allowlist', () => {
+    const body = cloneMetrics()
+    for (const resourceMetrics of body.resourceMetrics ?? []) {
+      for (const scope of resourceMetrics.scopeMetrics ?? []) {
+        for (const metric of scope.metrics ?? []) metric.name = 'claude_code.made_up.metric'
+      }
+    }
+    const result = expectOk(transformMetrics(body, DEVICE_ID))
+
+    expect(result.rows).toEqual([])
+    expect(result.dropped).toBe(8)
+    expect(result.sessions).toHaveLength(1)
+  })
+
+  it('keeps only the allowlisted metric attrs', () => {
+    const rows = expectOk(transformMetrics(cloneMetrics(), DEVICE_ID)).rows
+
+    for (const row of rows) {
+      expect(Object.keys(row.attrs).sort()).toEqual([...METRIC_ATTR_ALLOWLIST[row.metric]!].sort())
+    }
+  })
+
+  it('names only events the dashboard reads', () => {
+    expect(Object.keys(EVENT_ATTR_ALLOWLIST).sort()).toEqual([
+      'claude_code.api_error',
+      'claude_code.api_request',
+      'claude_code.tool_result'
+    ])
   })
 })
 
@@ -311,8 +406,8 @@ describe('buildSessionUpserts', () => {
 
 describe('buildDeviceLivenessUpdate', () => {
   it('updates the calling device rather than inserting one', () => {
-    const rows = expectOk(transformMetrics(cloneMetrics(), DEVICE_ID)).rows
-    const [statement] = buildDeviceLivenessUpdate(DEVICE_ID, rows)
+    const seenAt = expectOk(transformMetrics(cloneMetrics(), DEVICE_ID)).seenAt
+    const [statement] = buildDeviceLivenessUpdate(DEVICE_ID, seenAt)
 
     expect(statement!.text).toContain('update telemetry.device set')
     expect(statement!.text).not.toContain('insert into')
@@ -323,8 +418,8 @@ describe('buildDeviceLivenessUpdate', () => {
   })
 
   it('spans the batch from its earliest datapoint to its latest', () => {
-    const rows = expectOk(transformMetrics(twoPointBody('1787795897473000000', '1787795894906000000'), DEVICE_ID)).rows
-    const [statement] = buildDeviceLivenessUpdate(DEVICE_ID, rows)
+    const seenAt = expectOk(transformMetrics(twoPointBody('1787795897473000000', '1787795894906000000'), DEVICE_ID)).seenAt
+    const [statement] = buildDeviceLivenessUpdate(DEVICE_ID, seenAt)
 
     expect(statement!.params[1]).toBe(new Date(1787795894906).toISOString())
     expect(statement!.params[2]).toBe(new Date(1787795897473).toISOString())
