@@ -2,6 +2,9 @@
   "name": "simple-claude-code-otel",
   "private": true,
   "type": "module",
+  "imports": {
+    "#shared/*": "./shared/*.ts"
+  },
   "scripts": {
     "build": "nuxt build --dotenv .env.local",
     "dev": "nuxt dev --dotenv .env.local",
