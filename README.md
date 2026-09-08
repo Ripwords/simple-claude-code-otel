@@ -204,10 +204,33 @@ Code only sends the real text when you set `OTEL_LOG_USER_PROMPTS=1` or
 Your account email does arrive, attached to each session. It is stored once per
 session rather than on every row.
 
-Rows older than `RETENTION_DAYS` (90 by default) are deleted by a daily cron at
-04:00 UTC. Noisy hook and plugin events are deleted after 30 days regardless. A
-machine's own row is retired only once it is revoked or was never used, and only
-after all of its telemetry has aged out.
+Ingest stores three of the twenty-odd event types Claude Code emits, and on those
+it keeps only the attributes something actually charts: `tool_name` and `success`
+on a tool result, `status_code` on an API error, nothing at all on an API request.
+Hook, plugin, MCP, prompt and assistant-response events are dropped at the door.
+The list lives in `EVENT_ATTR_ALLOWLIST` in `server/utils/otlp.ts`; a new panel
+means adding its event and keys there first, and history only starts from then.
+
+A daily cron at 04:00 UTC folds each complete UTC day into three summary tables
+(`metric_daily`, `event_daily`, `event_duration_daily`), then deletes raw rows
+older than `RAW_RETENTION_DAYS` (7 by default). Summaries are kept for
+`ROLLUP_RETENTION_DAYS` (400), which is also the longest range the dashboard
+accepts, so every chart still reaches back a year. Latency survives as a
+log-scale histogram, so p50 and p95 stay within 9% of the exact figure once the
+rows behind them are gone.
+
+Ranges under three days are answered from raw rows at hourly resolution.
+Everything longer is answered from the summaries, and is snapped to UTC day
+boundaries because a summary row cannot be subdivided.
+
+A machine's own row is retired only once it is revoked or was never used, and
+only after all of its telemetry has aged out. Sessions age on their own clock, so
+per-machine session counts survive the raw window.
+
+If the database passes `DB_SIZE_ALARM_BYTES` the cron fails loudly rather than
+quietly shortening retention: a delete does not shrink `pg_database_size`, so a
+job that trimmed history until that number moved would trim until there was
+nothing left.
 
 ## Develop locally
 
