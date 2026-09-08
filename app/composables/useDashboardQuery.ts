@@ -22,10 +22,11 @@ function resolvePreset(id: string | undefined): RangePreset {
   return RANGE_PRESETS.find(p => p.id === id) ?? RANGE_PRESETS.find(p => p.id === DEFAULT_PRESET)!
 }
 
-function startOfDay(date: Date): Date {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  return copy
+// UTC, not local. The daily rollups are keyed on the UTC day and a rollup row is indivisible,
+// so a range starting at local midnight would force the server to either include hours it
+// should not or drop hours it should -- up to a full day of error on the seven-day preset.
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
 }
 
 export function useDashboardQuery() {
@@ -43,7 +44,7 @@ export function useDashboardQuery() {
 
   const range = computed(() => {
     const end = new Date(now.value)
-    const start = startOfDay(new Date(end.getTime() - preset.value.days * 86_400_000))
+    const start = startOfUtcDay(new Date(end.getTime() - preset.value.days * 86_400_000))
     return { from: start.toISOString(), to: end.toISOString() }
   })
 

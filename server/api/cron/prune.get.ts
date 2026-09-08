@@ -1,10 +1,13 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { NOISY_EVENT_NAMES } from '../../utils/otlp'
+import { buildDayRollup, buildRawPrune, buildRollupPrune } from '../../utils/rollup'
+import { positiveInt, rawRetentionDays } from '../../utils/range'
 import { bearerToken } from '../../utils/deviceToken'
+import { db } from '../../utils/db'
 
-const NOISY_EVENT_WINDOW_DAYS = 30
-const DEFAULT_RETENTION_DAYS = 90
+const DEFAULT_ROLLUP_RETENTION_DAYS = 400
+const DEFAULT_SIZE_ALARM_BYTES = 400 * 1024 * 1024
+const DAY_MS = 24 * 60 * 60 * 1000
 
 function isCronRequest(event: H3Event, secret: string): boolean {
   if (getRequestHeader(event, 'x-vercel-cron')) return true
@@ -19,52 +22,95 @@ function isCronRequest(event: H3Event, secret: string): boolean {
   )
 }
 
+/** Every complete UTC day still held raw, newest first. */
+function daysToRoll(rawRetention: number, now: number): string[] {
+  const today = Math.floor(now / DAY_MS) * DAY_MS
+  return Array.from({ length: rawRetention }, (_, i) => new Date(today - (i + 1) * DAY_MS).toISOString().slice(0, 10))
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   if (!isCronRequest(event, String(config.cronSecret ?? ''))) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const configured = Number(config.retentionDays)
-  const retentionDays = Number.isFinite(configured) && configured > 0 ? Math.trunc(configured) : DEFAULT_RETENTION_DAYS
+  const rawRetention = rawRetentionDays(config)
+  const rollupRetention = positiveInt(config.rollupRetentionDays, DEFAULT_ROLLUP_RETENTION_DAYS)
+  const sizeAlarmBytes = positiveInt(config.sizeAlarmBytes, DEFAULT_SIZE_ALARM_BYTES)
 
   const sql = db()
-  const deleteCount = async (text: string, params: unknown[]): Promise<number> => {
-    const rows = await sql.query(`with d as (${text} returning 1) select count(*)::int as deleted from d`, params)
-    return Number(rows[0]?.deleted ?? 0)
+  const run = async (text: string, params: unknown[]): Promise<number> => {
+    const rows = await sql.query(`with d as (${text} returning 1) select count(*)::int as affected from d`, params)
+    return Number(rows[0]?.affected ?? 0)
   }
 
-  const noisyEvents = await deleteCount(
-    'delete from telemetry.event where name = any($1::text[]) and ts < now() - make_interval(days => $2::int)',
-    [[...NOISY_EVENT_NAMES], NOISY_EVENT_WINDOW_DAYS]
-  )
-  const metricPoints = await deleteCount(
-    'delete from telemetry.metric_point where ts < now() - make_interval(days => $1::int)',
-    [retentionDays]
-  )
-  const agedEvents = await deleteCount(
-    'delete from telemetry.event where ts < now() - make_interval(days => $1::int)',
-    [retentionDays]
-  )
-  const sessions = await deleteCount(
-    'delete from telemetry.session s'
-    + ' where not exists (select 1 from telemetry.metric_point m where m.session_id = s.session_id)'
-    + ' and not exists (select 1 from telemetry.event e where e.session_id = s.session_id)',
-    []
-  )
+  // Roll up before deleting. A day is re-rolled for as long as its raw rows survive, so a
+  // laptop that was offline and posts a backlog gets folded in on the next run; deleting
+  // first would destroy those rows before anything counted them.
+  const days = daysToRoll(rawRetention, Date.now())
+  for (const day of days) {
+    const statements = buildDayRollup(day)
+    await sql.transaction(statements.map(statement => sql.query(statement.text, statement.params)))
+  }
 
-  // Only a device that has stopped mattering is retired: revoked, or provisioned and never used.
-  // A machine that is still reporting keeps its row however old its telemetry gets, and the window
-  // is measured from revocation rather than creation so a just-revoked device does not vanish.
-  const devices = await deleteCount(
+  let metricPoints = 0
+  let events = 0
+  for (const statement of buildRawPrune(rawRetention)) {
+    const affected = await run(statement.text, statement.params)
+    if (statement.text.includes('metric_point')) metricPoints = affected
+    else events = affected
+  }
+
+  let rollupRows = 0
+  let sessions = 0
+  for (const statement of buildRollupPrune(rollupRetention)) {
+    const affected = await run(statement.text, statement.params)
+    if (statement.text.includes('telemetry.session')) sessions = affected
+    else rollupRows += affected
+  }
+
+  // Only a device that has stopped mattering is retired: revoked, or provisioned and never
+  // used. A machine that is still reporting keeps its row however old its telemetry gets, and
+  // the window is measured from revocation rather than creation so a just-revoked device does
+  // not vanish. The rollup tables count as surviving telemetry alongside the raw ones.
+  const devices = await run(
     'delete from telemetry.device d'
     + ' where (d.revoked_at is not null or d.first_seen is null)'
     + ' and coalesce(d.revoked_at, d.created_at) < now() - make_interval(days => $1::int)'
     + ' and not exists (select 1 from telemetry.session s where s.device_id = d.id)'
     + ' and not exists (select 1 from telemetry.metric_point m where m.device_id = d.id)'
-    + ' and not exists (select 1 from telemetry.event e where e.device_id = d.id)',
-    [retentionDays]
+    + ' and not exists (select 1 from telemetry.event e where e.device_id = d.id)'
+    + ' and not exists (select 1 from telemetry.metric_daily r where r.device_id = d.id)'
+    + ' and not exists (select 1 from telemetry.event_daily r where r.device_id = d.id)',
+    [rollupRetention]
   )
 
-  return { metricPoints, events: noisyEvents + agedEvents, sessions, devices }
+  // Deliberately an alarm, not a control loop. pg_database_size does not fall after a delete
+  // -- dead tuples go back to the free space map, not the filesystem -- so a job that shrank
+  // its own retention until the number moved would read the same size after every pass and
+  // walk straight to its floor, destroying history to fix nothing. A healthy steady state is
+  // a plateau, and a plateau is indistinguishable from failure through this sensor.
+  const sizeRows = await sql.query('select pg_database_size(current_database())::bigint as bytes', [])
+  const sizeBytes = Number(sizeRows[0]?.bytes ?? 0)
+  const overBudget = sizeBytes > sizeAlarmBytes
+
+  const summary = {
+    rolledUpDays: days.length,
+    metricPoints,
+    events,
+    rollupRows,
+    sessions,
+    devices,
+    rawRetentionDays: rawRetention,
+    rollupRetentionDays: rollupRetention,
+    sizeBytes,
+    overBudget
+  }
+
+  if (overBudget) {
+    console.error('[prune] database is over its size alarm; shorten RAW_RETENTION_DAYS or trim the ingest allowlist', summary)
+    throw createError({ statusCode: 507, statusMessage: 'Database over size alarm', data: summary })
+  }
+
+  return summary
 })

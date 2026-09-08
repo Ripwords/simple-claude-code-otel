@@ -28,7 +28,11 @@ export default defineNuxtConfig({
     cronSecret: process.env.CRON_SECRET || '',
     dashboardPasswordHash: process.env.DASHBOARD_PASSWORD_HASH || '',
     sessionSecret: process.env.SESSION_SECRET || '',
-    retentionDays: process.env.RETENTION_DAYS || '90',
+    // Raw rows are kept only long enough to serve hourly charts and absorb a laptop that
+    // was offline; everything older is answered from the daily rollups.
+    rawRetentionDays: process.env.RAW_RETENTION_DAYS || '7',
+    rollupRetentionDays: process.env.ROLLUP_RETENTION_DAYS || '400',
+    sizeAlarmBytes: process.env.DB_SIZE_ALARM_BYTES || String(400 * 1024 * 1024),
     public: {
       appName: 'Claude Code Telemetry'
     }

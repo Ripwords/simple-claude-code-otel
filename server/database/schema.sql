@@ -82,5 +82,65 @@ create index if not exists event_device_idx
   on telemetry.event (device_id);
 create index if not exists event_ts_brin_idx
   on telemetry.event using brin (ts) with (pages_per_range = 32);
-create index if not exists event_attrs_gin_idx
-  on telemetry.event using gin (attrs jsonb_path_ops);
+-- Never served a query. Every dashboard predicate is attrs->>'key' extraction, which no GIN
+-- opclass can answer -- jsonb_path_ops indexes containment (@>, @?, @@) and nothing else.
+-- It cost 63 MB and one index write per ingested row to answer nothing.
+drop index if exists telemetry.event_attrs_gin_idx;
+
+-- Retention deletes a day's rows in one statement. Without a low scale factor autovacuum waits
+-- for 20% of the table to turn dead before running, so the heap ratchets upward between sweeps
+-- instead of settling. Freed pages have to return to the free space map for the next day to
+-- reuse them, because a plain delete never gives them back to the filesystem.
+alter table telemetry.event set (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
+alter table telemetry.metric_point set (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
+
+-- Raw telemetry is kept for days, these summaries for a year. Everything the dashboard asks
+-- about a range older than the raw window is answered from here.
+--
+-- The grain is the UTC day. model and attr_key carry an empty-string sentinel rather than null
+-- because they sit in the primary key, and because null never collides -- a re-rolled day would
+-- accumulate duplicate rows instead of converging on the same answer.
+--
+-- value is numeric, not double precision: float addition is not associative, so a rolled-up sum
+-- and a raw sum over the same rows disagree in the last bits. Exact arithmetic is what lets
+-- verify-rollup assert equality rather than a tolerance.
+create table if not exists telemetry.metric_daily (
+  day       date    not null,
+  device_id uuid    not null references telemetry.device (id) on delete cascade,
+  metric    text    not null,
+  model     text    not null default '',
+  attr_key  text    not null default '',
+  value     numeric not null,
+  points    bigint  not null,
+  primary key (day, device_id, metric, model, attr_key)
+);
+
+create index if not exists metric_daily_metric_day_idx
+  on telemetry.metric_daily (metric, day);
+
+create table if not exists telemetry.event_daily (
+  day       date   not null,
+  device_id uuid   not null references telemetry.device (id) on delete cascade,
+  name      text   not null,
+  attr_key  text   not null default '',
+  events    bigint not null,
+  failures  bigint not null default 0,
+  primary key (day, device_id, name, attr_key)
+);
+
+create index if not exists event_daily_name_day_idx
+  on telemetry.event_daily (name, day);
+
+-- Latency kept as a log-scale histogram at 8 buckets per octave, so p50 and p95 survive the
+-- raw rows. Summing bucket counts across days is an exact merge, which averaging per-day
+-- percentiles is not. Stored as rows rather than a jsonb blob so merging is `sum(n) group by
+-- bucket` and raw rows fold in under the identical bucket expression -- which is what makes
+-- the read path oblivious to where the raw/rollup seam falls.
+create table if not exists telemetry.event_duration_daily (
+  day       date     not null,
+  device_id uuid     not null references telemetry.device (id) on delete cascade,
+  name      text     not null,
+  bucket    smallint not null,
+  n         bigint   not null,
+  primary key (day, device_id, name, bucket)
+);
