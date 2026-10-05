@@ -114,13 +114,18 @@ let monitored = ''
 monitor.stdout.on('data', (chunk) => {
   monitored += String(chunk)
 })
+// B's first batch claimed its account, which marks its cache entry stale for a minute so the
+// claim is seen everywhere. Drop the marker rather than wait the minute out, then warm once.
+await redis.del(`device:${createHash('sha256').update(b.token).digest('hex')}`)
+await call('POST', '/api/otlp/v1/metrics', METRICS, b.token)
 await sleep(500)
 monitored = ''
 await call('POST', '/api/otlp/v1/metrics', METRICS, b.token)
 await sleep(500)
 monitor.kill()
 const topLevel = monitored.split('\n').filter(line => line.includes('"') && !line.includes(' lua]'))
-check('2. a warm ingest request costs at most two Redis commands', topLevel.length > 0 && topLevel.length <= 2,
+// B's token is now held in the instance's memory: only the enqueue goes to Redis.
+check('2. a warm ingest request costs one Redis command', topLevel.length === 1,
   { commands: topLevel.map(line => line.split('] ')[1]?.slice(0, 60)) })
 
 // --- 3. fresh --------------------------------------------------------------------------------
@@ -221,6 +226,28 @@ check('8. the machines page still shows the refusal, counted', conflict?.count =
 const back = await call('POST', '/api/otlp/v1/metrics', METRICS, r.token)
 await call('GET', '/api/devices')
 check('8. the owner reporting again clears it, in order', back.status === 200 && await refusedCount() === 0, { status: back.status, rejectedCount: await refusedCount() })
+
+// --- 9. Redis unavailable ---------------------------------------------------------------------
+// Upstash refusing (down, or over the free plan's monthly quota) must cost a database wake-up,
+// never the batch: the exporter would retry a failure a few times and then drop it.
+const REDIS_HTTP = 'otel-e2e-redis-http-1'
+const cold = await newDevice('e2e-redis-down')
+await call('GET', '/api/devices') // drain, so anything landing next came straight through
+execFileSync('docker', ['stop', REDIS_HTTP], { stdio: 'ignore' })
+try {
+  const down = await call('POST', '/api/otlp/v1/metrics', METRICS, cold.token)
+  const expectedCold = Number(down.json.stored ?? 0)
+  check('9. with Redis down a batch is still accepted', down.status === 200 && expectedCold > 0, { status: down.status, stored: expectedCold })
+  check('9. ...and written straight to Postgres', await factRows(cold.id) === expectedCold, { rows: await factRows(cold.id), expectedCold })
+} finally {
+  execFileSync('docker', ['start', REDIS_HTTP], { stdio: 'ignore' })
+}
+for (let i = 0; i < 40; i++) {
+  if (await redis.ping().then(() => true, () => false)) break
+  await sleep(250)
+}
+const recovered = await call('POST', '/api/otlp/v1/metrics', METRICS, cold.token)
+check('9. once Redis is back, batches are parked again', recovered.status === 200 && await queued() === 1, { status: recovered.status, queued: await queued() })
 
 mkdirSync('test/e2e/artifacts', { recursive: true })
 writeFileSync('test/e2e/artifacts/buffer-report.json', JSON.stringify(report, null, 2))
