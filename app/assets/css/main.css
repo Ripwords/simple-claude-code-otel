@@ -12,3 +12,10 @@ body {
   background: var(--viz-page);
   color: var(--viz-ink);
 }
+
+/* Safety net: whatever overflows, the page itself never scrolls sideways. clip, not hidden,
+   because hidden can still be scrolled by focus and scrollIntoView. */
+html,
+body {
+  overflow-x: clip;
+}

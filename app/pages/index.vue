@@ -53,6 +53,13 @@ const TRENDS: Array<{ id: TrendMetric, label: string }> = [
 const trendSeries = computed(() => topSeries(toSeries(trend.value === 'cost' ? costSeries.value : tokenSeries.value), STACKED_MACHINES))
 const trendFormat = computed(() => trend.value === 'cost' ? formatUsd : formatCompact)
 
+// Claude Code sends the literal string "undefined" when a request failed before any HTTP
+// response (timeouts, dropped connections); "unknown" is the server's key for a missing status.
+const ERROR_STATUSES: Record<string, string> = {
+  undefined: 'No response',
+  unknown: 'Not recorded'
+}
+
 const TOKEN_TYPES: Record<string, string> = {
   input: 'Input',
   output: 'Output',
@@ -196,6 +203,7 @@ const machinesNote = computed(() => {
               :items="errors"
               :format="formatCount"
               :limit="5"
+              :label-of="key => ERROR_STATUSES[key] ?? key"
               color="var(--viz-status-serious)"
             />
           </div>
@@ -219,6 +227,9 @@ const machinesNote = computed(() => {
 <style scoped>
 .page {
   display: grid;
+  /* minmax(0, 1fr), not the implicit auto track: an auto track grows to the widest child,
+     so opening the 13-column ledger widened the whole page and slid it sideways. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-xl);
   padding-top: var(--space-xs);
 }
