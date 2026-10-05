@@ -15,8 +15,12 @@ interface Column {
   of: (s: DeviceSummary) => string
 }
 
+// Raw percentiles arrive as fractional milliseconds (8035.779). Under a second reads as whole
+// ms, above it as seconds with one decimal, so the column scans without counting digits.
 function formatMs(value: number | null): string {
-  return value === null ? EM_DASH : formatCount(value)
+  if (value === null) return EM_DASH
+  if (value < 1000) return `${Math.round(value)} ms`
+  return `${(value / 1000).toFixed(1)} s`
 }
 
 const COLUMNS: Column[] = [
@@ -29,10 +33,10 @@ const COLUMNS: Column[] = [
   { key: 'toolFailures', label: 'Tool failures', of: s => formatCount(s.toolFailures) },
   { key: 'apiRequests', label: 'API requests', of: s => formatCount(s.apiRequests) },
   { key: 'apiErrors', label: 'API errors', of: s => formatCount(s.apiErrors) },
-  { key: 'p50Tool', label: 'p50 tool ms', of: s => formatMs(s.p50ToolMs) },
-  { key: 'p95Tool', label: 'p95 tool ms', of: s => formatMs(s.p95ToolMs) },
-  { key: 'p50Api', label: 'p50 API ms', of: s => formatMs(s.p50ApiMs) },
-  { key: 'p95Api', label: 'p95 API ms', of: s => formatMs(s.p95ApiMs) }
+  { key: 'p50Tool', label: 'p50 tool', of: s => formatMs(s.p50ToolMs) },
+  { key: 'p95Tool', label: 'p95 tool', of: s => formatMs(s.p95ToolMs) },
+  { key: 'p50Api', label: 'p50 API', of: s => formatMs(s.p50ApiMs) },
+  { key: 'p95Api', label: 'p95 API', of: s => formatMs(s.p95ApiMs) }
 ]
 
 const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeCompare(b.device)).map(summary => ({
@@ -106,17 +110,17 @@ const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeC
 
 .table {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .head {
-  padding: 0 14px 8px 0;
+  padding: 0 var(--space-sm) var(--space-xs) 0;
   text-align: right;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   white-space: nowrap;
   color: var(--viz-ink-secondary);
-  border-bottom: 1px solid var(--viz-baseline);
+  border-bottom: var(--rule-strong);
 }
 
 .device-head {
@@ -124,15 +128,15 @@ const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeC
   left: 0;
   z-index: 1;
   text-align: left;
-  padding-right: 24px;
+  padding-right: var(--space-lg);
   background: var(--viz-surface);
 }
 
 .cell {
-  padding: 9px 14px 9px 0;
+  padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
   white-space: nowrap;
   color: var(--viz-ink);
-  border-bottom: 1px solid var(--viz-grid);
+  border-bottom: var(--rule);
 }
 
 .device-cell {
@@ -141,7 +145,7 @@ const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeC
   z-index: 1;
   text-align: left;
   font-weight: 500;
-  padding-right: 24px;
+  padding-right: var(--space-lg);
   background: var(--viz-surface);
 }
 
@@ -153,7 +157,8 @@ const rows = computed(() => [...props.summaries].sort((a, b) => a.device.localeC
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 7px;
+  margin-right: var(--space-2xs);
+  border-radius: 50%;
 }
 
 tbody tr:last-child .cell {
