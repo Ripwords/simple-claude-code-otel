@@ -162,6 +162,8 @@ export function fixtureTimeseries(devices: string[], metric: MetricKey, bucket: 
 
 const BREAKDOWN_KEYS: Record<string, Array<[string, number]>> = {
   model: [['claude-opus-4-8-20260714', 0.62], ['claude-sonnet-4-6-20260212', 0.29], ['claude-haiku-4-5-20251001', 0.09]],
+  // Haiku is cheap per token, so it ranks higher by tokens than by cost.
+  modelTokens: [['claude-sonnet-4-6-20260212', 0.46], ['claude-opus-4-8-20260714', 0.31], ['claude-haiku-4-5-20251001', 0.23]],
   toolName: [['Edit', 0.28], ['Bash', 0.24], ['Read', 0.21], ['Grep', 0.12], ['Write', 0.09], ['Task', 0.06]],
   tokenType: [['cacheRead', 0.78], ['input', 0.13], ['cacheCreation', 0.06], ['output', 0.03]],
   editDecision: [['accept', 0.86], ['reject', 0.11], ['auto_accept', 0.03]],
@@ -170,6 +172,7 @@ const BREAKDOWN_KEYS: Record<string, Array<[string, number]>> = {
 
 const BREAKDOWN_TOTALS: Record<string, number> = {
   model: 232,
+  modelTokens: 3_700_000,
   toolName: 8005,
   tokenType: 28_464_000,
   editDecision: 3120,

@@ -1,6 +1,6 @@
 import type { Bucket, BreakdownRow, DeviceSummary, MetricKey, SeriesPoint } from '#shared/types'
 
-export type BreakdownDimension = 'model' | 'toolName' | 'tokenType' | 'editDecision' | 'errorStatus'
+export type BreakdownDimension = 'model' | 'modelTokens' | 'toolName' | 'tokenType' | 'editDecision' | 'errorStatus'
 
 function splitDevices(raw: string | undefined): string[] {
   return raw ? raw.split(',').filter(Boolean) : []

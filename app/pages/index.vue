@@ -10,6 +10,7 @@ const { data: summaries } = useSummary(rangeQuery)
 const { data: costSeries } = useTimeseries(rangeQuery, 'cost', bucket)
 const { data: tokenSeries } = useTimeseries(rangeQuery, 'tokens', bucket)
 const { data: costByModel } = useBreakdown(rangeQuery, 'model')
+const { data: tokensByModel } = useBreakdown(rangeQuery, 'modelTokens')
 const { data: toolVolume } = useBreakdown(rangeQuery, 'toolName')
 const { data: tokenSplit } = useBreakdown(rangeQuery, 'tokenType')
 const { data: apiErrors } = useBreakdown(rangeQuery, 'errorStatus')
@@ -119,6 +120,26 @@ const errorBars = computed(() => toGroups(apiErrors.value))
           <ChartBars
             :groups="modelBars"
             :format="formatUsd"
+          />
+        </DashboardPanel>
+
+        <DashboardPanel
+          eyebrow="Top models by cost"
+          note="Each machine's three biggest models, with their share of its spend."
+        >
+          <DashboardTopModels
+            :rows="costByModel ?? []"
+            :format="formatUsd"
+          />
+        </DashboardPanel>
+
+        <DashboardPanel
+          eyebrow="Top models by tokens"
+          note="Input plus output tokens. Cache tokens are left out; they track conversation length, not work done."
+        >
+          <DashboardTopModels
+            :rows="tokensByModel ?? []"
+            :format="formatCompact"
           />
         </DashboardPanel>
 

@@ -4,7 +4,7 @@ import { db } from './db'
 import { DURATION_BUCKET_SQL } from './rollup'
 import type { ResolvedRange } from './range'
 
-export const BREAKDOWN_KEYS = ['model', 'toolName', 'tokenType', 'editDecision', 'errorStatus'] as const
+export const BREAKDOWN_KEYS = ['model', 'modelTokens', 'toolName', 'tokenType', 'editDecision', 'errorStatus'] as const
 export type BreakdownKey = typeof BREAKDOWN_KEYS[number]
 
 const OTHER_KEY = 'Other'
@@ -273,6 +273,21 @@ function metricBreakdown(metric: string, rollupKey: string, rawKey: string): str
     from telemetry.metric_point where metric = '${metric}' and ${RAW_WINDOW}`
 }
 
+// Live tokens only. Cache reads run orders of magnitude larger and follow session length, so
+// counting them would rank whichever model ran the longest conversations rather than the most work.
+const LIVE_TOKEN_TYPES = `('input', 'output')`
+
+function modelTokenBreakdown(): string {
+  return `
+    select device_id, coalesce(nullif(model, ''), '${UNKNOWN_KEY}') as key, value
+    from telemetry.metric_daily
+    where metric = '${METRICS.tokens}' and attr_key in ${LIVE_TOKEN_TYPES} and ${ROLLUP_WINDOW}
+    union all
+    select device_id, coalesce(nullif(model, ''), '${UNKNOWN_KEY}'), value::numeric
+    from telemetry.metric_point
+    where metric = '${METRICS.tokens}' and attrs->>'type' in ${LIVE_TOKEN_TYPES} and ${RAW_WINDOW}`
+}
+
 function eventBreakdown(name: string): string {
   return `
     select device_id, coalesce(nullif(attr_key, ''), '${UNKNOWN_KEY}') as key, events::numeric as value
@@ -284,6 +299,7 @@ function eventBreakdown(name: string): string {
 
 const BREAKDOWN_SOURCES: Record<BreakdownKey, string> = {
   model: metricBreakdown(METRICS.cost, 'model', `coalesce(model, '')`),
+  modelTokens: modelTokenBreakdown(),
   tokenType: metricBreakdown(METRICS.tokens, 'attr_key', `attrs->>'type'`),
   editDecision: metricBreakdown(METRICS.editDecision, 'attr_key', `attrs->>'decision'`),
   toolName: eventBreakdown(EVENTS.toolResult),
