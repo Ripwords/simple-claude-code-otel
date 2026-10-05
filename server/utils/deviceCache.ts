@@ -15,6 +15,13 @@ const DEVICE_TTL_SECONDS = 60 * 60
 // request. Kept short: a freshly minted token is a hash nobody could have looked up before.
 const MISSING_TTL_SECONDS = 10 * 60
 const MISSING = 'none'
+// Written in place of the entry when a device changes, rather than deleting it. A request that
+// read the device just before the change would otherwise write its stale answer back after the
+// delete, and a revoked token would keep working for the full TTL. Fills use NX, so they cannot
+// replace this marker; while it stands every request reads Postgres. It only has to outlive one
+// in-flight lookup.
+const STALE = 'stale'
+const STALE_TTL_SECONDS = 60
 
 const key = (tokenHash: string) => `device:${tokenHash}`
 
@@ -26,17 +33,33 @@ export async function cachedDevice(
   if (!store) return await load()
 
   const hit = await store.get<string>(key(tokenHash))
+  if (hit === STALE) return await load()
   if (hit === MISSING) return null
   if (hit) return JSON.parse(hit) as CachedDevice
 
   const device = await load()
   await store.set(key(tokenHash), device ? JSON.stringify(device) : MISSING, {
+    nx: true,
     ex: device ? DEVICE_TTL_SECONDS : MISSING_TTL_SECONDS
   })
   return device
 }
 
+// Compare-and-set, so the update lands only on the exact entry it was derived from. Anything
+// else in the slot -- the stale marker after a revoke, a refreshed entry -- wins over it.
+const SWAP = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL')
+  return 1
+end
+return 0`
+
+/** Rewrites a cached device without a round trip to Postgres. A no-op if the entry has moved on. */
+export async function updateCachedDevice(tokenHash: string, previous: CachedDevice, next: CachedDevice): Promise<void> {
+  await redis()?.eval(SWAP, [key(tokenHash)], [JSON.stringify(previous), JSON.stringify(next)])
+}
+
 export async function forgetDevice(tokenHash: string | null | undefined): Promise<void> {
   const store = redis()
-  if (store && tokenHash) await store.del(key(tokenHash))
+  if (store && tokenHash) await store.set(key(tokenHash), STALE, { ex: STALE_TTL_SECONDS })
 }

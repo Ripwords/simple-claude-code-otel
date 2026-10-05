@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createError } from 'h3'
 import type { DeviceStatus } from '../../shared/types'
-import type { BatchAccount } from './otlp'
+import type { BatchAccount, Statement } from './otlp'
 import { accountEmail, isEmailAllowed } from './allowlistQueries'
-import { cachedDevice, forgetDevice } from './deviceCache'
+import { cachedDevice, forgetDevice, updateCachedDevice } from './deviceCache'
+import { enqueue, redis } from './buffer'
 import { db } from './db'
 
 const TOKEN_BYTES = 24
@@ -15,7 +16,8 @@ export interface AuthenticatedDevice {
   name: string
   tokenHash: string
   accountUuid: string | null
-  refusing: boolean
+  /** The account whose telemetry was last refused, while that refusal is still standing. */
+  refusedAccountUuid: string | null
 }
 
 export type AccountDecision
@@ -53,7 +55,7 @@ export async function authenticateDevice(header: string | undefined): Promise<Au
   const tokenHash = hashToken(token)
   const device = await cachedDevice(tokenHash, async () => {
     const rows = await db().query(
-      'select id, name, revoked_at, account_uuid, rejected_count from telemetry.device where token_hash = $1',
+      'select id, name, revoked_at, account_uuid, rejected_account_uuid, rejected_count from telemetry.device where token_hash = $1',
       [tokenHash]
     )
     const row = rows[0]
@@ -62,7 +64,7 @@ export async function authenticateDevice(header: string | undefined): Promise<Au
       id: String(row.id),
       name: String(row.name),
       accountUuid: text(row.account_uuid),
-      refusing: Number(row.rejected_count ?? 0) > 0
+      refusedAccountUuid: Number(row.rejected_count ?? 0) > 0 ? text(row.rejected_account_uuid) : null
     }
   })
 
@@ -122,34 +124,50 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
   // outlive the batch that disproves it. The owner signing back in is the commonest way out of
   // a conflict and used to leave the dashboard warning about a machine that had long resumed.
   // A guest clears only its own refusal, so a third account's is still waiting for the operator.
+  // Both are decided from the cached device, so a machine with nothing to clear writes nothing.
   if (batch && (decision.kind === 'allow' || decision.kind === 'guest')) {
-    if (device.refusing) {
-      await clearConflict(device.id, decision.kind === 'guest' ? decision.account.uuid : null)
-      await forgetDevice(device.tokenHash)
-    }
+    const refused = device.refusedAccountUuid
+    const clears = decision.kind === 'allow' ? refused !== null : refused === decision.account.uuid
+    if (clears) await writeRefusal(device, clearConflict(device.id, decision.kind === 'guest' ? decision.account.uuid : null), null)
     return
   }
 
   if (decision.kind !== 'reject') return
 
   // Recorded even though the batch is refused: it is the only reason the dashboard can
-  // explain why a machine went quiet.
-  await db().query(
-    `update telemetry.device set rejected_account_uuid = $2, rejected_account_email = $3,
+  // explain why a machine went quiet. A refused machine keeps posting every minute, so with
+  // Redis the record joins the ingest queue rather than waking Postgres on every attempt.
+  await writeRefusal(device, {
+    text: `update telemetry.device set rejected_account_uuid = $2, rejected_account_email = $3,
      rejected_at = now(), rejected_count = rejected_count + 1 where id = $1::uuid`,
-    [device.id, decision.presented.uuid, accountEmail(decision.presented.email)]
-  )
-  await forgetDevice(device.tokenHash)
+    params: [device.id, decision.presented.uuid, accountEmail(decision.presented.email)]
+  }, decision.presented.uuid)
   throw accountConflictError(decision.claimed, decision.presented)
 }
 
-function clearConflict(deviceId: string, onlyFor: string | null): Promise<unknown> {
-  return db().query(
-    `update telemetry.device set rejected_account_uuid = null, rejected_account_email = null,
+function clearConflict(deviceId: string, onlyFor: string | null): Statement {
+  return {
+    text: `update telemetry.device set rejected_account_uuid = null, rejected_account_email = null,
      rejected_at = null, rejected_count = 0
      where id = $1::uuid and ($2::text is null or rejected_account_uuid = $2)`,
-    [deviceId, onlyFor]
-  )
+    params: [deviceId, onlyFor]
+  }
+}
+
+/**
+ * Records or clears a refusal. With Redis both go through the ingest queue -- never one queued
+ * and one direct, or a clear could land ahead of an older queued refusal and be undone by it --
+ * and the cached device is updated in place so the next batch decides without Postgres.
+ */
+async function writeRefusal(device: AuthenticatedDevice, statement: Statement, refusedAccountUuid: string | null): Promise<void> {
+  const store = redis()
+  if (!store) {
+    await db().query(statement.text, statement.params)
+    return
+  }
+  await enqueue(store, [statement])
+  const { tokenHash, ...cached } = device
+  await updateCachedDevice(tokenHash, cached, { ...cached, refusedAccountUuid })
 }
 
 function text(value: unknown): string | null {
