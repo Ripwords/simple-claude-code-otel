@@ -1,23 +1,19 @@
 <script setup lang="ts">
 const STORAGE_KEY = 'cct:announced-devices'
 const RECENT_MS = 86_400_000
+const VISIBLE = 3
 
-interface Refusal {
-  id: string
-  name: string
-  at: string
-  count: number
-}
+type Kind = 'refused' | 'waiting' | 'new'
 
-interface Arrival {
+interface Item {
   id: string
+  kind: Kind
   name: string
-  firstSeen: string
-  sessions: number
+  /** The detail the old notice spelled out, kept for assistive tech and the hover title. */
+  detail: string
 }
 
 const { data: devices } = useDevices()
-const { colorFor } = useDeviceColors()
 
 // There is no server-side acknowledged flag, so "announced once" lives here. It
 // is read after mount only, so the server and client renders agree.
@@ -38,8 +34,8 @@ function writeAnnounced(ids: string[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
   } catch {
-    // Private mode and a blocked store both throw. The notice still goes away
-    // for this page view, it just comes back on the next load.
+    // Private mode and a blocked store both throw. The item still goes away for
+    // this page view, it just comes back on the next load.
   }
 }
 
@@ -48,26 +44,41 @@ onMounted(() => {
   ready.value = true
 })
 
-const arrivals = computed<Arrival[]>(() => {
-  if (!ready.value) return []
+// Ordered by how much each one matters: a refusal is a live hole in the data and
+// cannot be dismissed, a machine waiting on setup is a chore, an arrival is news.
+const items = computed<Item[]>(() => {
+  const all = devices.value ?? []
   const now = Date.now()
 
-  return (devices.value ?? []).flatMap<Arrival>((device) => {
-    if (device.status !== 'reporting' || device.firstSeen === null) return []
-    if (now - Date.parse(device.firstSeen) >= RECENT_MS) return []
-    if (announced.value.includes(device.id)) return []
-    return [{ id: device.id, name: device.name, firstSeen: device.firstSeen, sessions: device.sessions }]
-  })
+  const refused = all.flatMap<Item>(device => device.conflict === null
+    ? []
+    : [{
+        id: device.id,
+        kind: 'refused',
+        name: device.name,
+        detail: `Another Claude Code account was refused ${device.conflict.count === 1 ? 'once' : `${formatCount(device.conflict.count)} times`}, last ${formatStamp(device.conflict.at)}. Nothing it did since is counted.`
+      }])
+
+  const waiting = all.flatMap<Item>(device => device.status !== 'pending'
+    ? []
+    : [{ id: device.id, kind: 'waiting', name: device.name, detail: `Added ${formatStamp(device.createdAt)}; nothing has arrived from it yet.` }])
+
+  const arrived = !ready.value
+    ? []
+    : all.flatMap<Item>((device) => {
+        if (device.status !== 'reporting' || device.firstSeen === null) return []
+        if (now - Date.parse(device.firstSeen) >= RECENT_MS) return []
+        if (announced.value.includes(device.id)) return []
+        return [{ id: device.id, kind: 'new', name: device.name, detail: `First telemetry ${formatStamp(device.firstSeen)}. Setup worked.` }]
+      })
+
+  return [...refused, ...waiting, ...arrived]
 })
 
-const waiting = computed(() => (devices.value ?? []).filter(device => device.status === 'pending'))
+const shown = computed(() => items.value.slice(0, VISIBLE))
+const hidden = computed(() => items.value.length - shown.value.length)
 
-// Not dismissible, unlike an arrival. A refusal is a live hole in the data, and
-// it stops on its own the moment the machine reports under the right account.
-const refused = computed<Refusal[]>(() => (devices.value ?? []).flatMap<Refusal>((device) => {
-  if (device.conflict === null) return []
-  return [{ id: device.id, name: device.name, at: device.conflict.at, count: device.conflict.count }]
-}))
+const VERB: Record<Kind, string> = { refused: 'refused', waiting: 'not set up', new: 'new' }
 
 function dismiss(id: string) {
   const next = [...announced.value, id]
@@ -77,174 +88,147 @@ function dismiss(id: string) {
 </script>
 
 <template>
-  <div
-    v-if="refused.length > 0 || arrivals.length > 0 || waiting.length > 0"
-    class="notices"
+  <ul
+    v-if="items.length > 0"
+    class="status"
+    aria-label="Machine status"
   >
-    <section
-      v-for="device in refused"
-      :key="`refused-${device.id}`"
-      class="notice notice-broken"
+    <li
+      v-for="item in shown"
+      :key="`${item.kind}-${item.id}`"
+      class="item"
+      :class="`is-${item.kind}`"
+      :title="item.detail"
     >
-      <p class="eyebrow viz-eyebrow">
-        <DeviceConflictMark />
-        <span>Telemetry refused</span>
-      </p>
-
-      <h2 class="headline">
-        <span
-          class="dot"
-          :style="{ backgroundColor: colorFor(device.id) }"
-        />
-        <span class="viz-mono">{{ device.name }}</span>
-        <span class="headline-rest">is being turned away</span>
-      </h2>
-
-      <p class="viz-prose">
-        A different Claude Code account has been reporting from this machine, and every attempt was
-        refused, {{ device.count === 1 ? 'once' : `${formatCount(device.count)} times` }}, most
-        recently <span class="viz-mono">{{ formatStamp(device.at) }}</span>. Nothing below counts a
-        thing it has done since.
-      </p>
-
+      <span
+        class="mark"
+        aria-hidden="true"
+      />
       <NuxtLink
         to="/devices"
-        class="action viz-mono viz-focus"
+        class="name viz-mono viz-focus"
       >
-        Sort out the account binding
+        {{ item.name }}
       </NuxtLink>
-    </section>
-
-    <section
-      v-for="device in arrivals"
-      :key="`reporting-${device.id}`"
-      class="notice"
-    >
-      <p class="viz-eyebrow">
-        Setup confirmed
-      </p>
-
-      <h2 class="headline">
-        <span
-          class="dot"
-          :style="{ backgroundColor: colorFor(device.id) }"
-        />
-        <span class="viz-mono">{{ device.name }}</span>
-        <span class="headline-rest">has started reporting</span>
-      </h2>
-
-      <p class="viz-prose">
-        Its first telemetry arrived <span class="viz-mono">{{ formatStamp(device.firstSeen) }}</span>,
-        {{ device.sessions }} {{ device.sessions === 1 ? 'session' : 'sessions' }} so far. Setup
-        worked, and its numbers are already in every view below.
-      </p>
-
+      <span class="verb">{{ VERB[item.kind] }}</span>
+      <span class="sr-only">. {{ item.detail }}</span>
       <button
+        v-if="item.kind === 'new'"
         type="button"
-        class="action viz-mono viz-focus"
-        @click="dismiss(device.id)"
+        class="dismiss viz-focus"
+        :aria-label="`Dismiss: ${item.name} started reporting`"
+        @click="dismiss(item.id)"
       >
-        Got it
+        <UIcon
+          name="i-lucide-x"
+          aria-hidden="true"
+        />
       </button>
-    </section>
+    </li>
 
-    <section
-      v-for="device in waiting"
-      :key="`pending-${device.id}`"
-      class="notice notice-fix"
+    <li
+      v-if="hidden > 0"
+      class="item"
     >
-      <p class="viz-eyebrow">
-        Waiting on setup
-      </p>
-
-      <h2 class="headline">
-        <span class="viz-mono">{{ device.name }}</span>
-        <span class="headline-rest">has not reported yet</span>
-      </h2>
-
-      <p class="viz-prose">
-        You added it <span class="viz-mono">{{ formatStamp(device.createdAt) }}</span> and nothing
-        has arrived from it since. Until it reports it has no numbers anywhere on this page.
-      </p>
-
       <NuxtLink
         to="/devices"
-        class="action viz-mono viz-focus"
+        class="more viz-focus"
       >
-        Finish setting it up
+        +{{ hidden }} more
       </NuxtLink>
-    </section>
-  </div>
+    </li>
+  </ul>
 </template>
 
 <style scoped>
-.notices {
-  display: grid;
-  gap: 1px;
-  background: var(--viz-grid);
-  border: 1px solid var(--viz-grid);
-}
-
-.notice {
-  background: var(--viz-page);
-  padding: 20px 22px;
-}
-
-.notice-fix {
-  border-left: 3px solid var(--viz-status-warning);
-}
-
-/* A refusal is a broken pipeline, not a chore, so it takes the critical end of
-   the status palette. The glyph and the words say it without the colour. */
-.notice-broken {
-  border-left: 3px solid var(--viz-status-critical);
-}
-
-.eyebrow {
+.status {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--viz-status-critical);
-}
-
-.headline {
-  display: flex;
-  align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 6px;
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--viz-ink);
-}
-
-.headline-rest {
-  font-weight: 500;
+  align-items: center;
+  gap: var(--space-3xs) var(--space-sm);
+  min-width: 0;
+  font-size: var(--text-xs);
   color: var(--viz-ink-secondary);
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  align-self: center;
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+  white-space: nowrap;
 }
 
-.action {
-  display: inline-block;
-  margin-top: 14px;
-  padding: 6px 14px;
-  border: 1px solid var(--viz-ink);
-  background: transparent;
+.mark {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+}
+
+/* Shape carries the meaning as well as colour: refused is solid, waiting is hollow. */
+.is-refused .mark {
+  background: var(--viz-status-critical);
+}
+
+.is-waiting .mark {
+  box-shadow: inset 0 0 0 1.5px var(--viz-status-warning);
+}
+
+.is-new .mark {
+  background: var(--viz-status-good);
+}
+
+.is-refused .verb {
+  color: var(--viz-status-critical);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16ch;
   color: var(--viz-ink);
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-decoration-color: var(--viz-grid);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-short) var(--ease-out);
+}
+
+.name:hover {
+  text-decoration-color: currentcolor;
+}
+
+.dismiss {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: calc(var(--space-3xs) * -1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--viz-muted);
   cursor: pointer;
 }
 
-.action:hover {
-  background: var(--viz-ink);
-  color: var(--viz-surface);
+.dismiss:hover {
+  color: var(--viz-ink);
+  background: var(--viz-page);
+}
+
+.dismiss:active {
+  transform: translateY(1px);
+}
+
+.more {
+  color: var(--viz-ink-secondary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .name {
+    transition: none;
+  }
 }
 </style>

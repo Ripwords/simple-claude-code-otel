@@ -1,0 +1,38 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Stat-Led · theme: house (viz palette) · mood: calm instrument
+ * pre-emit critique: P4 H5 E4 S4 R5 V4
+ * Non-colour tokens. Colours live in viz.css, which carries the light/dark switch.
+ * Every component references these by name; raw px values are not used for spacing, type or motion.
+ */
+:root {
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-figure: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* 4-point scale */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4.5rem;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-figure: clamp(1.25rem, 1vw + 1rem, 1.625rem);
+  --text-display: clamp(2.75rem, 5vw + 1rem, 4.5rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-short: 160ms;
+  --dur-medium: 420ms;
+
+  --radius-bar: 2px;
+  --radius-control: 6px;
+  --rule: 1px solid var(--viz-grid);
+  --rule-strong: 1px solid var(--viz-baseline);
+}

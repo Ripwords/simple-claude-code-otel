@@ -26,7 +26,7 @@ const selectionLabel = computed(() => {
 <template>
   <div class="filters">
     <div
-      class="range"
+      class="range viz-segmented"
       role="group"
       aria-label="Date range"
     >
@@ -34,13 +34,16 @@ const selectionLabel = computed(() => {
         v-for="option in RANGE_PRESETS"
         :key="option.id"
         type="button"
-        class="range-option viz-mono viz-focus"
-        :class="{ 'is-active': option.id === preset.id }"
+        class="viz-segment"
         :aria-pressed="option.id === preset.id"
         @click="setPreset(option.id)"
       >
         {{ option.label }}
       </button>
+    </div>
+
+    <div class="status-slot">
+      <slot />
     </div>
 
     <USelectMenu
@@ -51,7 +54,7 @@ const selectionLabel = computed(() => {
       :search-input="{ placeholder: 'Filter machines' }"
       :ui="{ content: 'viz-root' }"
       color="neutral"
-      variant="none"
+      variant="outline"
       class="picker viz-mono"
       aria-label="Machines"
     >
@@ -70,51 +73,56 @@ const selectionLabel = computed(() => {
 </template>
 
 <style scoped>
+/* Status gets its own row: squeezed between the controls, three notices wrap to two lines. */
 .filters {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "range picker"
+    "status status";
   align-items: center;
-  justify-content: space-between;
-  gap: 12px 24px;
-  padding: 10px 0;
-  border-top: 1px solid var(--viz-grid);
-  border-bottom: 1px solid var(--viz-grid);
+  gap: var(--space-xs) var(--space-md);
 }
 
 .range {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
+  grid-area: range;
 }
 
-.range-option {
-  padding: 5px 10px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--viz-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.range-option:hover {
-  color: var(--viz-ink);
-}
-
-.range-option.is-active {
-  color: var(--viz-ink);
-  border-bottom-color: var(--viz-ink);
+.status-slot {
+  grid-area: status;
+  min-width: 0;
 }
 
 .picker {
-  min-width: 13rem;
-  font-size: 12px;
+  grid-area: picker;
+  min-width: 12rem;
+  font-size: var(--text-xs);
   color: var(--viz-ink);
 }
 
 .swatch {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   flex: none;
+  border-radius: 50%;
+}
+
+@media (width < 560px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "range"
+      "picker"
+      "status";
+  }
+
+  .range {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .picker {
+    width: 100%;
+  }
 }
 </style>

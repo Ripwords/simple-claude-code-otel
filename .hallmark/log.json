@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-10-05",
+    "verb": "redesign",
+    "target": "app/pages/index.vue",
+    "genre": "modern-minimal",
+    "macrostructure": "Stat-Led",
+    "theme": "house (viz palette, Archivo + IBM Plex Mono)",
+    "mood": "calm instrument",
+    "critique": { "philosophy": 4, "hierarchy": 5, "execution": 4, "specificity": 4, "restraint": 5, "variety": 4 },
+    "notes": "Status line replaces notice blocks; stacked top-5 + Other; leaderboard for 1 or 3+ machines, spine for 2."
+  }
+]

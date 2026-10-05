@@ -22,6 +22,9 @@
   --viz-status-warning: #fab219;
   --viz-status-serious: #ec835a;
   --viz-status-critical: #d03b3b;
+
+  /* Machines past the top few in a stacked chart share this one band. */
+  --viz-other: var(--viz-baseline);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,17 +71,17 @@
 }
 
 .viz-root {
-  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   color: var(--viz-ink);
 }
 
 .viz-mono {
-  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-figure);
   font-variant-ligatures: none;
 }
 
 .viz-root svg text {
-  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-figure);
 }
 
 .viz-tabular {
@@ -86,7 +89,7 @@
 }
 
 .viz-eyebrow {
-  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-figure);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
@@ -103,7 +106,7 @@
 }
 
 .viz-code {
-  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-figure);
   font-size: 0.92em;
   padding: 1px 5px;
   border: 1px solid var(--viz-grid);
@@ -120,4 +123,74 @@
   padding: 20px 0;
   font-size: 13px;
   color: var(--viz-muted);
+}
+
+/* Sentence-case section heading: the calm replacement for an eyebrow on every panel. */
+.viz-heading {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--viz-ink);
+}
+
+.viz-note {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--viz-muted);
+}
+
+.viz-figure {
+  font-family: var(--font-figure);
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;
+}
+
+/* Segmented control shared by the range picker and the chart toggles. */
+.viz-segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--viz-page);
+}
+
+.viz-segment {
+  padding: var(--space-3xs) var(--space-xs);
+  border: 0;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: transparent;
+  color: var(--viz-ink-secondary);
+  font-family: var(--font-figure);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+
+.viz-segment:hover {
+  color: var(--viz-ink);
+}
+
+.viz-segment:active {
+  transform: translateY(1px);
+}
+
+.viz-segment[aria-pressed="true"],
+.viz-segment[aria-selected="true"] {
+  background: var(--viz-surface);
+  color: var(--viz-ink);
+  box-shadow: 0 0 0 1px var(--viz-grid);
+}
+
+.viz-segment:focus-visible {
+  outline: 2px solid var(--viz-ink);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viz-segment {
+    transition: none;
+  }
 }
