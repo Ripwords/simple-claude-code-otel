@@ -61,11 +61,26 @@ for (const scheme of ['light', 'dark'] as const) {
       const extra = await overflow(page)
       check(`no horizontal scroll ${width}px ${scheme} ${range}`, extra <= 0, `${extra}px extra`)
       await page.screenshot({ path: `${OUT}/after-${range}-${width}-${scheme}.png`, fullPage: true })
+      // The 13-column ledger is the widest thing on the page; opening it once widened the
+      // whole page and slid it sideways when the summary took focus.
+      const left = await page.locator('.page').evaluate(e => e.getBoundingClientRect().left)
+      await page.locator('.ledger-summary').click()
+      await page.locator('.ledger-summary').scrollIntoViewIfNeeded()
+      const shifted = await page.locator('.page').evaluate(e => e.getBoundingClientRect().left)
+      const extraOpen = await overflow(page)
+      check(`ledger open keeps the page still ${width}px ${scheme} ${range}`, extraOpen <= 0 && Math.abs(shifted - left) < 1, `${extraOpen}px extra, moved ${Math.round(shifted - left)}px`)
     }
   }
 }
 await page.emulateMedia({ colorScheme: 'light' })
 await page.setViewportSize({ width: 1440, height: 900 })
+
+// 1b. Clicking the ledger with a mouse draws no focus box; the ring is for keyboard users.
+await open('/?range=30d')
+await page.locator('.ledger-summary').click()
+check('mouse click on the ledger draws no focus ring', !await page.locator('.ledger-summary').evaluate(e => e.matches(':focus-visible')))
+const latency = await page.locator('.ledger-table tbody tr').first().locator('td').last().innerText()
+check('latency reads as ms or seconds, not raw decimals', /^(\d+ ms|\d+\.\d s|—)$/.test(latency.trim()), latency)
 
 // 2. Hero total equals the sum of what the summary API returned.
 const rows = await open('/?range=30d')
