@@ -21,7 +21,8 @@
     "e2e:dev": "nuxt dev --dotenv test/e2e/stack.env --port 3100",
     "verify:top-models": "bun --env-file=test/e2e/stack.env scripts/verify-top-models.ts",
     "verify:buffer": "bun --env-file=test/e2e/stack.env scripts/verify-buffer.ts",
-    "seed:e2e": "bun --env-file=test/e2e/stack.env scripts/seed-e2e.ts"
+    "seed:e2e": "bun --env-file=test/e2e/stack.env scripts/seed-e2e.ts",
+    "verify:redesign": "bun --env-file=test/e2e/stack.env scripts/verify-redesign.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.125",
@@ -39,6 +40,7 @@
     "@nuxt/test-utils": "^4.1.0",
     "eslint": "^10.9.0",
     "happy-dom": "^20.11.6",
+    "playwright": "^1.63.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11",
     "vue-tsc": "^3.3.11"
