@@ -1,3 +1,4 @@
+import { requireSession } from '../../utils/session'
 import { z } from 'zod'
 import { parseRange } from '../../utils/range'
 import { BREAKDOWN_KEYS, queryBreakdown } from '../../utils/queries'
@@ -5,6 +6,7 @@ import { BREAKDOWN_KEYS, queryBreakdown } from '../../utils/queries'
 const paramsSchema = z.object({ by: z.enum(BREAKDOWN_KEYS) })
 
 export default defineEventHandler(async (event) => {
+  requireSession(event)
   const range = parseRange(event)
   const parsed = paramsSchema.safeParse(getQuery(event))
   if (!parsed.success) {
