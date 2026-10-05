@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { neon } from '@neondatabase/serverless'
+import { routeLocalNeon } from '#shared/neonLocal'
 
 const url = process.env.DATABASE_URL
 if (!url) {
@@ -7,6 +8,7 @@ if (!url) {
   process.exit(1)
 }
 
+routeLocalNeon()
 const sql = neon(url)
 // Comments are stripped before the split, not after. A semicolon inside a `--` comment would
 // otherwise cut the file mid-statement and leave a comment-only fragment, which Postgres

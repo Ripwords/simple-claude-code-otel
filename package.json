@@ -16,7 +16,10 @@
     "test": "vitest run",
     "auth:hash": "node scripts/hash-password.mjs",
     "verify:lifecycle": "bun --env-file=.env.local scripts/verify-lifecycle.mjs",
-    "verify:account": "bun --env-file=.env.local scripts/verify-account-binding.mjs"
+    "verify:account": "bun --env-file=.env.local scripts/verify-account-binding.mjs",
+    "e2e:up": "docker compose -f test/e2e/docker-compose.yml up -d && bun --env-file=test/e2e/stack.env scripts/db-push.mjs",
+    "e2e:dev": "nuxt dev --dotenv test/e2e/stack.env --port 3100",
+    "verify:top-models": "bun --env-file=test/e2e/stack.env scripts/verify-top-models.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.125",

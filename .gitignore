@@ -30,3 +30,6 @@ logs
 
 # ...but the shipped app icons are real assets.
 !public/*.png
+
+# E2E run output, regenerated on every run
+test/e2e/artifacts/
