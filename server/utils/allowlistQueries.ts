@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { z } from 'zod'
 import type { AllowedEmail } from '../../shared/types'
 import { db } from './db'
+import { redis } from './buffer'
 
 // Trimmed before the format check. Chaining .trim() after z.email() runs too late,
 // so a padded address would be refused as malformed rather than cleaned up.
@@ -56,8 +57,19 @@ export async function listAllowedEmails(): Promise<AllowedEmail[]> {
   })
 }
 
+// Cached because a guest account reporting through another machine's token asks this on every
+// batch. The explicit list clears its entry on change; a machine-owner email can lag a claim or
+// release by the TTL, which only delays a guest being admitted or refused by minutes.
+const ALLOWED_TTL_SECONDS = 5 * 60
+const allowedKey = (email: string) => `allow:${email}`
+
 export async function isEmailAllowed(email: string | null): Promise<boolean> {
   if (email === null) return false
+  const normalized = normalizeEmail(email)
+  const store = redis()
+
+  const hit = store ? await store.get<string>(allowedKey(normalized)) : null
+  if (hit !== null) return hit === '1'
 
   const rows = await db().query(
     `select exists(
@@ -65,9 +77,11 @@ export async function isEmailAllowed(email: string | null): Promise<boolean> {
        union all
        select 1 from telemetry.device where lower(account_email) = $1
      ) as allowed`,
-    [normalizeEmail(email)]
+    [normalized]
   )
-  return rows[0]?.allowed === true
+  const allowed = rows[0]?.allowed === true
+  await store?.set(allowedKey(normalized), allowed ? '1' : '0', { ex: ALLOWED_TTL_SECONDS })
+  return allowed
 }
 
 export async function addAllowedEmail(email: string): Promise<AllowedEmail> {
@@ -81,11 +95,14 @@ export async function addAllowedEmail(email: string): Promise<AllowedEmail> {
      ) as created_at`,
     [email]
   )
+  // After the write, not before: a lookup landing in between would re-cache the old answer.
+  await redis()?.del(allowedKey(email))
   return { email, source: 'manual', addedAt: timestamp(rows[0]?.created_at) }
 }
 
 export async function removeAllowedEmail(email: string): Promise<void> {
   const rows = await db().query('delete from telemetry.allowed_email where email = $1 returning email', [email])
+  await redis()?.del(allowedKey(email))
   if (!rows[0]) {
     throw createError({
       statusCode: 404,

@@ -1,5 +1,7 @@
+import type { H3Event } from 'h3'
 import type { Statement } from './otlp'
 import { db } from './db'
+import { enqueue, flush, redis } from './buffer'
 
 export interface IngestResult {
   accepted: number
@@ -11,7 +13,7 @@ export interface IngestResult {
 // 5xx, so failing loudly here turns a full database into a retry storm that also starves the
 // dashboard of connections. Shedding the batch keeps the site up; the cron's size alarm is
 // what tells someone the data is being lost.
-const OVER_CAPACITY = /project size limit|disk quota|no space left/i
+export const OVER_CAPACITY = /project size limit|disk quota|no space left/i
 
 export async function runIngest(statements: Statement[], result: IngestResult): Promise<IngestResult> {
   if (statements.length === 0) return result
@@ -25,4 +27,21 @@ export async function runIngest(statements: Statement[], result: IngestResult): 
     console.error('[ingest] shedding batch: database is over its storage limit', error)
     return { accepted: result.accepted, stored: 0, dropped: result.accepted }
   }
+}
+
+/**
+ * Parks the batch in Redis when one is configured and kicks off a flush once one is due,
+ * after the response so the exporter is not kept waiting on Postgres. Without Redis it
+ * writes straight through, which is what local development and a fresh deploy get.
+ */
+export async function ingest(event: H3Event, statements: Statement[], result: IngestResult): Promise<IngestResult> {
+  const store = redis()
+  if (!store || statements.length === 0) return await runIngest(statements, result)
+
+  if (await enqueue(store, statements)) {
+    const flushing = flush().catch(error => console.error('[ingest] flush failed; the queue is kept for the next one', error))
+    if (typeof event.waitUntil === 'function') event.waitUntil(flushing)
+    else await flushing
+  }
+  return result
 }

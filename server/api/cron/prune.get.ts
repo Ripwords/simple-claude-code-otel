@@ -4,6 +4,7 @@ import { buildDayRollup, buildRawPrune, buildRollupPrune } from '../../utils/rol
 import { positiveInt, rawRetentionDays } from '../../utils/range'
 import { bearerToken } from '../../utils/deviceToken'
 import { db } from '../../utils/db'
+import { flush } from '../../utils/buffer'
 
 const DEFAULT_ROLLUP_RETENTION_DAYS = 400
 const DEFAULT_SIZE_ALARM_BYTES = 400 * 1024 * 1024
@@ -43,6 +44,10 @@ export default defineEventHandler(async (event) => {
     const rows = await sql.query(`with d as (${text} returning 1) select count(*)::int as affected from d`, params)
     return Number(rows[0]?.affected ?? 0)
   }
+
+  // Drain the ingest buffer first, or the rollup would summarise days that are still
+  // missing whatever was parked in Redis.
+  const buffered = await flush({ wait: true })
 
   // Roll up before deleting. A day is re-rolled for as long as its raw rows survive, so a
   // laptop that was offline and posts a backlog gets folded in on the next run; deleting
@@ -95,6 +100,8 @@ export default defineEventHandler(async (event) => {
   const overBudget = sizeBytes > sizeAlarmBytes
 
   const summary = {
+    bufferedBatches: buffered.flushed,
+    droppedBatches: buffered.dropped,
     rolledUpDays: days.length,
     metricPoints,
     events,

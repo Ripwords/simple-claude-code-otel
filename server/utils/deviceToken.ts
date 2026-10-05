@@ -3,6 +3,7 @@ import { createError } from 'h3'
 import type { DeviceStatus } from '../../shared/types'
 import type { BatchAccount } from './otlp'
 import { accountEmail, isEmailAllowed } from './allowlistQueries'
+import { cachedDevice, forgetDevice } from './deviceCache'
 import { db } from './db'
 
 const TOKEN_BYTES = 24
@@ -12,6 +13,7 @@ const ACCOUNT_PREFIX_LENGTH = 8
 export interface AuthenticatedDevice {
   id: string
   name: string
+  tokenHash: string
   accountUuid: string | null
   refusing: boolean
 }
@@ -48,20 +50,24 @@ export async function authenticateDevice(header: string | undefined): Promise<Au
   const token = bearerToken(header)
   if (!token) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
-  const rows = await db().query(
-    'select id, name, revoked_at, account_uuid, rejected_count from telemetry.device where token_hash = $1',
-    [hashToken(token)]
-  )
+  const tokenHash = hashToken(token)
+  const device = await cachedDevice(tokenHash, async () => {
+    const rows = await db().query(
+      'select id, name, revoked_at, account_uuid, rejected_count from telemetry.device where token_hash = $1',
+      [tokenHash]
+    )
+    const row = rows[0]
+    if (!row || row.revoked_at) return null
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      accountUuid: text(row.account_uuid),
+      refusing: Number(row.rejected_count ?? 0) > 0
+    }
+  })
 
-  const device = rows[0]
-  if (!device || device.revoked_at) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-
-  return {
-    id: String(device.id),
-    name: String(device.name),
-    accountUuid: text(device.account_uuid),
-    refusing: Number(device.rejected_count ?? 0) > 0
-  }
+  if (!device) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  return { ...device, tokenHash }
 }
 
 // Trust on first use, like an SSH host key: telemetry config lives in ~/.claude/settings.json,
@@ -98,6 +104,7 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
       'update telemetry.device set account_uuid = $2, account_email = $3 where id = $1::uuid and account_uuid is null returning account_uuid',
       [device.id, decision.account.uuid, decision.account.email]
     )
+    await forgetDevice(device.tokenHash)
     if (won[0]) return
 
     // Zero rows means a concurrent first batch won the claim, so the stored value decides.
@@ -116,7 +123,10 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
   // a conflict and used to leave the dashboard warning about a machine that had long resumed.
   // A guest clears only its own refusal, so a third account's is still waiting for the operator.
   if (batch && (decision.kind === 'allow' || decision.kind === 'guest')) {
-    if (device.refusing) await clearConflict(device.id, decision.kind === 'guest' ? decision.account.uuid : null)
+    if (device.refusing) {
+      await clearConflict(device.id, decision.kind === 'guest' ? decision.account.uuid : null)
+      await forgetDevice(device.tokenHash)
+    }
     return
   }
 
@@ -129,6 +139,7 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
      rejected_at = now(), rejected_count = rejected_count + 1 where id = $1::uuid`,
     [device.id, decision.presented.uuid, accountEmail(decision.presented.email)]
   )
+  await forgetDevice(device.tokenHash)
   throw accountConflictError(decision.claimed, decision.presented)
 }
 

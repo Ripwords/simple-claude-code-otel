@@ -1,6 +1,6 @@
 import { buildDeviceLivenessUpdate, buildMetricInserts, buildSessionUpserts, transformMetrics, type OtlpMetricsBody } from '../../../utils/otlp'
 import { authenticateDevice, enforceDeviceAccount } from '../../../utils/deviceToken'
-import { runIngest } from '../../../utils/ingest'
+import { ingest } from '../../../utils/ingest'
 
 export default defineEventHandler(async (event) => {
   const device = await authenticateDevice(getRequestHeader(event, 'authorization'))
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     ...buildDeviceLivenessUpdate(device.id, result.seenAt)
   ]
 
-  return await runIngest(statements, {
+  return await ingest(event, statements, {
     accepted: result.rows.length + result.dropped,
     stored: result.rows.length,
     dropped: result.dropped

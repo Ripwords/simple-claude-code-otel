@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { DeviceAccount, DeviceAccountConflict, DeviceCascade, DeviceInfo, DeviceSecret, DeviceStatus } from '../../shared/types'
 import { deviceStatus, mintToken } from './deviceToken'
 import { db } from './db'
+import { forgetDevice } from './deviceCache'
 
 const UNIQUE_VIOLATION = '23505'
 
@@ -69,11 +70,12 @@ export async function createDevice(name: string): Promise<DeviceSecret> {
 
 export async function renameDevice(id: string, name: string): Promise<DeviceInfo> {
   const rows = await uniqueName(() => db().query(
-    `with updated as (update telemetry.device set name = $2 where id = $1 returning *)
-     select ${DEVICE_COLUMNS} from updated d`,
+    `with old as (select token_hash from telemetry.device where id = $1),
+     updated as (update telemetry.device set name = $2 where id = $1 returning *)
+     select ${DEVICE_COLUMNS}, (select token_hash from old) as old_token_hash from updated d`,
     [id, name]
   ))
-  return toDeviceInfo(found(rows))
+  return toDeviceInfo(await forgotten(found(rows)))
 }
 
 // Rotation clears revoked_at: issuing a fresh credential to a machine is the act of
@@ -81,31 +83,34 @@ export async function renameDevice(id: string, name: string): Promise<DeviceInfo
 export async function rotateDevice(id: string): Promise<DeviceSecret> {
   const { token, hash, prefix } = mintToken()
   const rows = await db().query(
-    `with updated as (update telemetry.device set token_hash = $2, token_prefix = $3, revoked_at = null where id = $1 returning *)
-     select ${DEVICE_COLUMNS} from updated d`,
+    `with old as (select token_hash from telemetry.device where id = $1),
+     updated as (update telemetry.device set token_hash = $2, token_prefix = $3, revoked_at = null where id = $1 returning *)
+     select ${DEVICE_COLUMNS}, (select token_hash from old) as old_token_hash from updated d`,
     [id, hash, prefix]
   )
-  return { device: toDeviceInfo(found(rows)), token }
+  return { device: toDeviceInfo(await forgotten(found(rows))), token }
 }
 
 export async function revokeDevice(id: string): Promise<DeviceInfo> {
   const rows = await db().query(
-    `with updated as (update telemetry.device set revoked_at = coalesce(revoked_at, now()) where id = $1 returning *)
-     select ${DEVICE_COLUMNS} from updated d`,
+    `with old as (select token_hash from telemetry.device where id = $1),
+     updated as (update telemetry.device set revoked_at = coalesce(revoked_at, now()) where id = $1 returning *)
+     select ${DEVICE_COLUMNS}, (select token_hash from old) as old_token_hash from updated d`,
     [id]
   )
-  return toDeviceInfo(found(rows))
+  return toDeviceInfo(await forgotten(found(rows)))
 }
 
 // Releasing re-arms trust on first use, so the next account to report claims the machine.
 export async function releaseDevice(id: string): Promise<DeviceInfo> {
   const rows = await db().query(
-    `with updated as (update telemetry.device set account_uuid = null, account_email = null,
+    `with old as (select token_hash from telemetry.device where id = $1),
+     updated as (update telemetry.device set account_uuid = null, account_email = null,
        rejected_account_uuid = null, rejected_account_email = null, rejected_at = null, rejected_count = 0 where id = $1 returning *)
-     select ${DEVICE_COLUMNS} from updated d`,
+     select ${DEVICE_COLUMNS}, (select token_hash from old) as old_token_hash from updated d`,
     [id]
   )
-  return toDeviceInfo(found(rows))
+  return toDeviceInfo(await forgotten(found(rows)))
 }
 
 export async function deleteDevice(id: string): Promise<DeviceCascade> {
@@ -116,12 +121,13 @@ export async function deleteDevice(id: string): Promise<DeviceCascade> {
         (select count(*) from telemetry.metric_point where device_id = $1) as metric_points,
         (select count(*) from telemetry.event where device_id = $1) as events
     ),
-    deleted as (delete from telemetry.device where id = $1 returning 1)
-    select counts.sessions, counts.metric_points, counts.events, (select count(*) from deleted) as devices from counts`,
+    deleted as (delete from telemetry.device where id = $1 returning token_hash)
+    select counts.sessions, counts.metric_points, counts.events, (select count(*) from deleted) as devices,
+      (select token_hash from deleted) as old_token_hash from counts`,
     [id]
   )
 
-  const row = found(rows)
+  const row = await forgotten(found(rows))
   if (Number(row.devices ?? 0) === 0) throw notFound()
 
   return {
@@ -129,6 +135,14 @@ export async function deleteDevice(id: string): Promise<DeviceCascade> {
     metricPoints: Number(row.metric_points ?? 0),
     events: Number(row.events ?? 0)
   }
+}
+
+// Every mutation here changes what some token means, so the cached answer for the hash the
+// token had before the change is dropped. Rotation is the case that matters most: the old
+// token must stop working at once, not when its cache entry expires.
+async function forgotten(row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  await forgetDevice(row.old_token_hash as string | null | undefined)
+  return row
 }
 
 async function uniqueName(run: () => Promise<Record<string, unknown>[]>): Promise<Record<string, unknown>[]> {

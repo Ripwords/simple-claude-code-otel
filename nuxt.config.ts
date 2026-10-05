@@ -26,6 +26,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     databaseUrl: process.env.DATABASE_URL || '',
     cronSecret: process.env.CRON_SECRET || '',
+    // Optional. When set, ingest is buffered here so Neon can sleep between flushes.
+    redisUrl: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '',
+    redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '',
     dashboardPasswordHash: process.env.DASHBOARD_PASSWORD_HASH || '',
     sessionSecret: process.env.SESSION_SECRET || '',
     // Raw rows are kept only long enough to serve hourly charts and absorb a laptop that

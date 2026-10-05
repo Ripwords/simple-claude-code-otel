@@ -69,14 +69,23 @@ You need a Vercel account, Bun, and Node 20 or newer.
 	vercel env add CRON_SECRET production
 	```
 
-4. Create the tables.
+4. Attach an Upstash Redis database (the free plan is enough) and add its REST
+   URL and token. Without it the app still works, but every telemetry request
+   wakes Neon, and the free plan's compute hours run out in about three weeks.
+
+	```sh
+	vercel env add UPSTASH_REDIS_REST_URL production
+	vercel env add UPSTASH_REDIS_REST_TOKEN production
+	```
+
+5. Create the tables.
 
 	```sh
 	vercel env pull .env.local
 	bun run db:push
 	```
 
-5. Deploy.
+6. Deploy.
 
 	```sh
 	vercel deploy --prod
@@ -140,6 +149,7 @@ The script only writes this:
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
     "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORT_INTERVAL": "60000",
     "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-app.vercel.app/api/otlp",
     "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer <the token>"
@@ -149,7 +159,6 @@ The script only writes this:
 
 ## A machine reports for one account only
 
-    "OTEL_LOGS_EXPORT_INTERVAL": "60000",
 Telemetry lives in `~/.claude/settings.json`, which belongs to the machine rather
 than to a Claude Code account. So signing out and signing into a different account
 on that laptop would otherwise keep it reporting, and the second account's spend
@@ -228,6 +237,31 @@ A machine's own row is retired only once it is revoked or was never used, and
 only after all of its telemetry has aged out. Sessions age on their own clock, so
 per-machine session counts survive the raw window.
 
+## Staying inside Neon's free plan
+
+Neon charges compute for every minute the database is awake, and only suspends it
+after five idle minutes. Claude Code sends telemetry every few seconds while
+anyone is working, so writing each request straight to Postgres kept the database
+awake about twenty hours a day. That used up the free plan's 100 compute-hours in
+about three weeks.
+
+With Upstash configured, ingest parks each batch in Redis instead and answers
+without touching Postgres. Device tokens are cached there too. The queue is
+written to Postgres in bulk when the first batch arrives more than 30 minutes
+after the last flush, when a signed-in dashboard reads, and before the daily
+cron rolls up. The database wakes a few times an hour while machines are active
+and sleeps otherwise. The dashboard is never stale, because opening it drains
+the queue first.
+
+Every ingest write is idempotent, so a flush that dies halfway is simply resumed.
+A batch the database refuses on its data, such as one from a machine deleted while
+its batch waited in the queue, is dropped and logged rather than blocking the queue.
+
+Machines send logs once a minute (`OTEL_LOGS_EXPORT_INTERVAL=60000`) rather than
+Claude Code's default of every five seconds. That keeps a handful of busy machines
+under Upstash's free monthly command limit. Machines set up before this change
+keep the five-second default until their setup command is run again.
+
 If the database passes `DB_SIZE_ALARM_BYTES` the cron fails loudly rather than
 quietly shortening retention: a delete does not shrink `pg_database_size`, so a
 job that trimmed history until that number moved would trim until there was
@@ -250,7 +284,19 @@ bun run typecheck
 bun run test
 ```
 
-Two checks drive a running server end to end rather than mocking it. Both create
+The buffer and the top-models tables are checked against a throwaway local stack
+(Postgres and Redis in Docker, behind proxies that speak Neon's and Upstash's
+protocols), so these never touch the real database or spend the real Redis quota.
+Each writes a report to `test/e2e/artifacts/`.
+
+```sh
+bun run e2e:up        # start the stack and create the tables
+bun run e2e:dev       # in another terminal: the app on :3100 against the stack
+bun run verify:top-models
+bun run verify:buffer
+```
+
+Two more checks drive a running server end to end rather than mocking it. Both create
 what they need and delete it afterwards.
 
 ```sh

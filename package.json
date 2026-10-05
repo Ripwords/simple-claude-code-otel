@@ -19,13 +19,15 @@
     "verify:account": "bun --env-file=.env.local scripts/verify-account-binding.mjs",
     "e2e:up": "docker compose -f test/e2e/docker-compose.yml up -d && bun --env-file=test/e2e/stack.env scripts/db-push.mjs",
     "e2e:dev": "nuxt dev --dotenv test/e2e/stack.env --port 3100",
-    "verify:top-models": "bun --env-file=test/e2e/stack.env scripts/verify-top-models.ts"
+    "verify:top-models": "bun --env-file=test/e2e/stack.env scripts/verify-top-models.ts",
+    "verify:buffer": "bun --env-file=test/e2e/stack.env scripts/verify-buffer.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.125",
     "@iconify-json/simple-icons": "^1.2.93",
     "@neondatabase/serverless": "^1.1.0",
     "@nuxt/ui": "^4.11.0",
+    "@upstash/redis": "^1.39.0",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
