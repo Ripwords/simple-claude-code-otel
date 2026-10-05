@@ -2,180 +2,295 @@
 import type { BreakdownRow } from '#shared/types'
 
 interface Props {
-  rows: BreakdownRow[]
-  format: (value: number) => string
+  costRows: BreakdownRow[]
+  tokenRows: BreakdownRow[]
 }
 
 const props = defineProps<Props>()
 
 const { colorFor } = useDeviceColors()
 
-const RANKS = [1, 2, 3] as const
+type Basis = 'cost' | 'tokens'
+const basis = ref<Basis>('cost')
 
-const machines = computed(() => rankTopModels(props.rows, RANKS.length).map(machine => ({
-  ...machine,
-  color: colorFor(machine.deviceId),
-  cells: RANKS.map((rank, i) => ({ rank, model: machine.models[i] ?? null }))
-})))
+const BASES: Array<{ id: Basis, label: string }> = [
+  { id: 'cost', label: 'By spend' },
+  { id: 'tokens', label: 'By live tokens' }
+]
+
+const rows = computed(() => basis.value === 'cost' ? props.costRows : props.tokenRows)
+const format = computed(() => basis.value === 'cost' ? formatUsd : formatCompact)
+
+// Models take a tonal ramp of ink rather than the series hues, because those hues already
+// mean "machine" on this page. Tones are assigned by fleet rank, so a model keeps its tone
+// in every machine's bar.
+const TONES = ['var(--viz-ink)', 'var(--viz-ink-secondary)', 'var(--viz-muted)', 'var(--viz-baseline)']
+const REST_TONE = 'var(--viz-grid)'
+
+const fleet = computed(() => fleetTotals(rows.value.filter(row => row.key !== 'Other' && row.key !== 'unknown')))
+const toneOf = computed(() => new Map(fleet.value.map((item, index) => [item.key, TONES[index] ?? REST_TONE])))
+
+const legend = computed(() => [
+  ...fleet.value.slice(0, TONES.length).map(item => ({ label: shortModelName(item.key), color: toneOf.value.get(item.key)! })),
+  ...(fleet.value.length > TONES.length ? [{ label: 'everything else', color: REST_TONE }] : [])
+])
+
+const machines = computed(() => rankTopModels(rows.value).map((machine) => {
+  const ranked = machine.models.reduce((sum, model) => sum + model.share, 0)
+  return {
+    ...machine,
+    color: colorFor(machine.deviceId),
+    segments: [
+      ...machine.models.map(model => ({ key: model.model, share: model.share, color: toneOf.value.get(model.model) ?? REST_TONE })),
+      ...(ranked < 0.999 ? [{ key: 'rest', share: 1 - ranked, color: REST_TONE }] : [])
+    ]
+  }
+}).sort((a, b) => b.total - a.total))
+
+// The machines table above already lists every machine, so this list opens on the busiest few.
+const FIRST_MACHINES = 6
+const showAll = ref(false)
+const shown = computed(() => showAll.value ? machines.value : machines.value.slice(0, FIRST_MACHINES))
 
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
 </script>
 
 <template>
-  <p
-    v-if="machines.length === 0"
-    class="empty"
-  >
-    Nothing reported in this range.
-  </p>
-
-  <div
-    v-else
-    class="scroller"
-  >
-    <table class="table">
-      <caption class="sr-only">
-        The three most used models on each machine for the selected range
-      </caption>
-      <thead>
-        <tr>
-          <th
-            scope="col"
-            class="head device-head"
-          >
-            Machine
-          </th>
-          <th
-            v-for="rank in RANKS"
-            :key="rank"
-            scope="col"
-            class="head"
-          >
-            #{{ rank }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="machine in machines"
-          :key="machine.deviceId"
+  <div class="models">
+    <div class="controls">
+      <div
+        class="viz-segmented"
+        role="group"
+        aria-label="Rank models by"
+      >
+        <button
+          v-for="option in BASES"
+          :key="option.id"
+          type="button"
+          class="viz-segment"
+          :aria-pressed="basis === option.id"
+          @click="basis = option.id"
         >
-          <th
-            scope="row"
-            class="cell device-cell viz-mono"
+          {{ option.label }}
+        </button>
+      </div>
+      <ChartLegend :items="legend" />
+    </div>
+
+    <p
+      v-if="machines.length === 0"
+      class="viz-no-data"
+    >
+      Nothing reported in this range.
+    </p>
+
+    <div
+      v-else
+      class="layout"
+    >
+      <div>
+        <h3 class="sub">
+          Top three on each machine
+        </h3>
+        <ul class="machines">
+          <li
+            v-for="machine in shown"
+            :key="machine.deviceId"
+            class="machine"
           >
-            <span
-              class="dot"
-              :style="{ backgroundColor: machine.color }"
-            />
-            {{ machine.device }}
-          </th>
-          <td
-            v-for="cell in machine.cells"
-            :key="cell.rank"
-            class="cell"
-          >
-            <template v-if="cell.model">
+            <span class="name viz-mono">
               <span
-                class="model"
-                :title="cell.model.model"
-              >{{ shortModelName(cell.model.model) }}</span>
-              <span class="figure viz-mono">
-                {{ format(cell.model.value) }}
-                <span class="share">{{ percent.format(cell.model.share) }}</span>
-              </span>
-            </template>
+                class="dot"
+                :style="{ backgroundColor: machine.color }"
+              />
+              <span class="name-text">{{ machine.device }}</span>
+            </span>
             <span
-              v-else
-              class="none"
-            >{{ EM_DASH }}</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+              class="stack"
+              role="img"
+              :aria-label="machine.models.map(model => `${shortModelName(model.model)} ${percent.format(model.share)}`).join(', ')"
+            >
+              <span
+                v-for="segment in machine.segments"
+                :key="segment.key"
+                class="segment"
+                :style="{ width: `${segment.share * 100}%`, backgroundColor: segment.color }"
+              />
+            </span>
+            <span class="ranked">
+              <span
+                v-for="(model, index) in machine.models"
+                :key="model.model"
+                class="pick"
+                :title="`${model.model}: ${format(model.value)}`"
+              >
+                <span class="rank viz-figure">{{ index + 1 }}</span>
+                {{ shortModelName(model.model) }}
+                <span class="viz-figure pct">{{ percent.format(model.share) }}</span>
+              </span>
+            </span>
+          </li>
+        </ul>
+        <button
+          v-if="machines.length > FIRST_MACHINES"
+          type="button"
+          class="more viz-focus"
+          :aria-expanded="showAll"
+          @click="showAll = !showAll"
+        >
+          {{ showAll ? 'Show fewer' : `Show all ${machines.length} machines` }}
+        </button>
+      </div>
+
+      <div>
+        <h3 class="sub">
+          Whole fleet
+        </h3>
+        <ChartBars
+          :items="fleet"
+          :format="format"
+          :label-of="shortModelName"
+          :limit="5"
+          color="var(--viz-ink-secondary)"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.scroller {
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs) var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: var(--space-xl);
+}
+
+.sub {
+  margin-bottom: var(--space-xs);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--viz-ink-secondary);
+}
+
+.machines {
+  display: grid;
+}
+
+.machine {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+  grid-template-areas:
+    "name stack"
+    ". ranked";
+  align-items: center;
+  gap: var(--space-3xs) var(--space-sm);
+  padding: var(--space-2xs) 0;
+  border-bottom: var(--rule);
+}
+
+.machine:last-child {
+  border-bottom: 0;
+}
+
+.name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
   min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.head {
-  padding: 0 14px 8px 0;
-  text-align: left;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
+}
+
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--viz-ink-secondary);
-  border-bottom: 1px solid var(--viz-baseline);
-}
-
-.device-head,
-.device-cell {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  padding-right: 20px;
-  background: var(--viz-surface);
-}
-
-.cell {
-  padding: 9px 14px 9px 0;
-  white-space: nowrap;
-  vertical-align: top;
-  color: var(--viz-ink);
-  border-bottom: 1px solid var(--viz-grid);
-}
-
-.device-cell {
-  text-align: left;
-  font-weight: 500;
-}
-
-.model {
-  display: block;
-  font-weight: 500;
-}
-
-.figure {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--viz-ink-secondary);
-}
-
-.share {
-  margin-left: 4px;
-  color: var(--viz-muted);
-}
-
-.none,
-.empty {
-  color: var(--viz-muted);
-}
-
-.empty {
-  font-size: 13px;
 }
 
 .dot {
-  display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 7px;
+  flex: none;
+  border-radius: 50%;
 }
 
-tbody tr:last-child .cell {
-  border-bottom: 0;
+.stack {
+  grid-area: stack;
+  display: flex;
+  height: 10px;
+  gap: 1px;
+  border-radius: var(--radius-bar);
+  overflow: hidden;
+  background: var(--viz-surface);
+}
+
+.segment {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+}
+
+.ranked {
+  grid-area: ranked;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--viz-ink-secondary);
+}
+
+.pick {
+  white-space: nowrap;
+}
+
+.more {
+  margin-top: var(--space-xs);
+  padding: var(--space-3xs) 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--viz-ink-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--viz-baseline);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.more:hover {
+  color: var(--viz-ink);
+}
+
+.rank {
+  color: var(--viz-muted);
+}
+
+.pct {
+  color: var(--viz-muted);
+}
+
+@media (width < 760px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .machine {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "stack"
+      "ranked";
+  }
 }
 </style>

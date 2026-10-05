@@ -6,11 +6,14 @@ interface Props {
   bucket: 'hour' | 'day'
   height?: number
   format?: (value: number) => string
+  /** Bands stacked bottom to top in series order, so the top edge reads as the total. */
+  stacked?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   height: 240,
-  format: formatCompact
+  format: formatCompact,
+  stacked: false
 })
 
 const DEFAULT_WIDTH = 720
@@ -43,7 +46,7 @@ onBeforeUnmount(() => {
 const drawn = computed(() => props.series.filter(s => s.points.length > 0))
 const hasData = computed(() => drawn.value.length > 0)
 
-const directLabels = computed(() => drawn.value.length > 0 && drawn.value.length <= 4)
+const directLabels = computed(() => !stackedMode.value && drawn.value.length > 0 && drawn.value.length <= 4)
 const padRight = computed(() => (directLabels.value ? LABEL_GUTTER : 28))
 
 const xValues = computed(() => {
@@ -54,7 +57,32 @@ const xValues = computed(() => {
   return [...seen].sort((a, b) => a - b)
 })
 
+// A single bucket has no width to fill, so it falls back to dots like the line chart does.
+const stackedMode = computed(() => props.stacked && xValues.value.length > 1)
+
+/** Per series, the [bottom, top] of its band at every x. Missing points stack as zero. */
+const bands = computed(() => {
+  let floor = new Map<number, number>(xValues.value.map(x => [x, 0]))
+  return drawn.value.map((s) => {
+    const own = new Map(s.points.map(p => [p.x, p.y]))
+    const band = new Map<number, [number, number]>()
+    const next = new Map<number, number>()
+    for (const x of xValues.value) {
+      const bottom = floor.get(x) ?? 0
+      const top = bottom + (own.get(x) ?? 0)
+      band.set(x, [bottom, top])
+      next.set(x, top)
+    }
+    floor = next
+    return band
+  })
+})
+
 const maxY = computed(() => {
+  if (stackedMode.value) {
+    const last = bands.value[bands.value.length - 1]
+    return last ? Math.max(0, ...[...last.values()].map(([, top]) => top)) : 0
+  }
   let max = 0
   for (const s of drawn.value) {
     for (const p of s.points) if (p.y > max) max = p.y
@@ -92,14 +120,28 @@ const lookups = computed(() => drawn.value.map(s => new Map(s.points.map(p => [p
 
 const paths = computed(() => drawn.value.map(s => linePath(s.points, sx.value, sy.value)))
 
+const areas = computed(() => {
+  if (!stackedMode.value) return []
+  const xs = xValues.value
+  return bands.value.map((band, i) => {
+    const top = xs.map(x => ({ x, y: band.get(x)![1] }))
+    const bottom = [...xs].reverse().map(x => ({ x, y: band.get(x)![0] }))
+    const edge = linePath(top, sx.value, sy.value)
+    const back = bottom.map(p => `L${sx.value(p.x).toFixed(2)},${sy.value(p.y).toFixed(2)}`).join(' ')
+    return { key: drawn.value[i]!.key, color: drawn.value[i]!.color, fill: `${edge} ${back} Z`, edge }
+  })
+})
+
 /**
  * A one-point series has no segment to stroke, so without an explicit dot a
  * real reading would draw nothing at all.
  */
-const soloPoints = computed(() => drawn.value.flatMap((s) => {
-  const only = s.points.length === 1 ? s.points[0] : undefined
-  return only ? [{ key: s.key, color: s.color, cx: sx.value(only.x), cy: sy.value(only.y) }] : []
-}))
+const soloPoints = computed(() => stackedMode.value
+  ? []
+  : drawn.value.flatMap((s) => {
+      const only = s.points.length === 1 ? s.points[0] : undefined
+      return only ? [{ key: s.key, color: s.color, cx: sx.value(only.x), cy: sy.value(only.y) }] : []
+    }))
 
 const LABEL_MIN_GAP = 13
 
@@ -120,7 +162,11 @@ const endLabels = computed(() => {
   return placed
 })
 
-const legendItems = computed(() => drawn.value.map(s => ({ label: s.label, color: s.color })))
+// Stacked bands read top to bottom, so the legend lists them in that order too.
+const legendItems = computed(() => {
+  const items = drawn.value.map(s => ({ label: s.label, color: s.color }))
+  return stackedMode.value ? items.reverse() : items
+})
 
 const hoverX = computed(() => {
   const index = hoverIndex.value
@@ -131,7 +177,7 @@ const hoverMarkers = computed(() => {
   const x = hoverX.value
   if (x === null) return []
   return drawn.value.flatMap((s, i) => {
-    const y = lookups.value[i]!.get(x)
+    const y = stackedMode.value ? bands.value[i]!.get(x)?.[1] : lookups.value[i]!.get(x)
     return y === undefined ? [] : [{ key: s.key, color: s.color, cx: sx.value(x), cy: sy.value(y) }]
   })
 })
@@ -143,10 +189,14 @@ const tooltip = computed(() => {
   const flip = anchor + 12 + TOOLTIP_WIDTH > width.value
   return {
     heading: formatBucket(new Date(x).toISOString(), props.bucket),
-    rows: drawn.value.flatMap((s, i) => {
-      const y = lookups.value[i]!.get(x)
-      return y === undefined ? [] : [{ key: s.key, label: s.label, color: s.color, value: props.format(y) }]
-    }),
+    rows: (() => {
+      const rows = drawn.value.flatMap((s, i) => {
+        const y = lookups.value[i]!.get(x)
+        return y === undefined ? [] : [{ key: s.key, label: s.label, color: s.color, value: props.format(y) }]
+      })
+      return stackedMode.value ? rows.reverse() : rows
+    })(),
+    total: stackedMode.value ? props.format(bands.value[bands.value.length - 1]?.get(x)?.[1] ?? 0) : null,
     left: flip ? anchor - 12 - TOOLTIP_WIDTH : anchor + 12
   }
 })
@@ -233,13 +283,31 @@ function onMove(event: PointerEvent) {
           :y="height - 8"
         >{{ formatAxisTick(tick, bucket) }}</text>
 
-        <path
-          v-for="(d, i) in paths"
-          :key="drawn[i]!.key"
-          :d="d"
-          :stroke="drawn[i]!.color"
-          class="line"
-        />
+        <template v-if="stackedMode">
+          <path
+            v-for="area in areas"
+            :key="`area-${area.key}`"
+            :d="area.fill"
+            :fill="area.color"
+            class="band"
+          />
+          <path
+            v-for="area in areas"
+            :key="`edge-${area.key}`"
+            :d="area.edge"
+            :stroke="area.color"
+            class="band-edge"
+          />
+        </template>
+        <template v-else>
+          <path
+            v-for="(d, i) in paths"
+            :key="drawn[i]!.key"
+            :d="d"
+            :stroke="drawn[i]!.color"
+            class="line"
+          />
+        </template>
 
         <circle
           v-for="point in soloPoints"
@@ -310,6 +378,13 @@ function onMove(event: PointerEvent) {
           <span class="tooltip-label viz-mono">{{ row.label }}</span>
           <span class="tooltip-value viz-mono">{{ row.value }}</span>
         </div>
+        <div
+          v-if="tooltip.total !== null"
+          class="tooltip-row tooltip-total"
+        >
+          <span class="tooltip-label">Total</span>
+          <span class="tooltip-value viz-mono">{{ tooltip.total }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -357,6 +432,23 @@ function onMove(event: PointerEvent) {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.band {
+  opacity: 0.78;
+}
+
+.band-edge {
+  fill: none;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.tooltip-total {
+  margin-top: var(--space-3xs);
+  padding-top: var(--space-3xs);
+  border-top: var(--rule);
+  font-weight: 500;
 }
 
 .marker {

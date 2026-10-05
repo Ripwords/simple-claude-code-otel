@@ -27,7 +27,7 @@ defineProps<{ items: LegendItem[] }>()
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: var(--space-3xs) var(--space-sm);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -36,15 +36,16 @@ defineProps<{ items: LegendItem[] }>()
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.4;
+  gap: var(--space-2xs);
+  font-size: var(--text-xs);
   color: var(--viz-ink-secondary);
+  line-height: 1.4;
 }
 
 .legend-swatch {
   width: 8px;
   height: 8px;
   flex: none;
+  border-radius: 50%;
 }
 </style>

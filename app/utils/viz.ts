@@ -140,3 +140,54 @@ export function formatAxisTick(epochMs: number, bucket: 'hour' | 'day'): string 
     ? date.toLocaleTimeString('en-US', { hour: 'numeric' })
     : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
+
+/** One series per x: the sum of every series at that x. */
+export function sumSeries(series: readonly ChartSeries[]): ChartPoint[] {
+  const totals = new Map<number, number>()
+  for (const s of series) {
+    for (const p of s.points) totals.set(p.x, (totals.get(p.x) ?? 0) + p.y)
+  }
+  return [...totals.entries()].sort((a, b) => a[0] - b[0]).map(([x, y]) => ({ x, y }))
+}
+
+export const OTHER_SERIES_KEY = '__other__'
+
+/**
+ * Keeps the `limit` series with the largest totals and folds the rest into one "Other" series.
+ * The palette has eight hues and a chart stays legible at far fewer, so past that point colour
+ * stops identifying anything; one honest "Other" band beats twelve near-identical lines.
+ */
+export function topSeries(series: readonly ChartSeries[], limit: number, otherColor = 'var(--viz-other)'): ChartSeries[] {
+  const total = (s: ChartSeries) => s.points.reduce((sum, p) => sum + p.y, 0)
+  const ranked = [...series].filter(s => total(s) > 0).sort((a, b) => total(b) - total(a) || a.label.localeCompare(b.label))
+  if (ranked.length <= limit + 1) return ranked
+
+  const kept = ranked.slice(0, limit)
+  const rest = ranked.slice(limit)
+  return [...kept, { key: OTHER_SERIES_KEY, label: `${rest.length} others`, color: otherColor, points: sumSeries(rest) }]
+}
+
+export interface FleetTotal {
+  key: string
+  total: number
+  /** Per machine, largest first, for the hover breakdown. */
+  parts: Array<{ deviceId: string, device: string, value: number }>
+}
+
+/** Collapses per-machine breakdown rows into one total per key, largest first. */
+export function fleetTotals(rows: readonly { deviceId: string, device: string, key: string, value: number }[]): FleetTotal[] {
+  const byKey = new Map<string, FleetTotal>()
+  for (const row of rows) {
+    let entry = byKey.get(row.key)
+    if (!entry) {
+      entry = { key: row.key, total: 0, parts: [] }
+      byKey.set(row.key, entry)
+    }
+    entry.total += row.value
+    entry.parts.push({ deviceId: row.deviceId, device: row.device, value: row.value })
+  }
+  return [...byKey.values()]
+    .filter(entry => entry.total > 0)
+    .map(entry => ({ ...entry, parts: entry.parts.sort((a, b) => b.value - a.value) }))
+    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key))
+}

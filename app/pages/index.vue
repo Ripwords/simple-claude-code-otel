@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { BreakdownRow, SeriesPoint } from '#shared/types'
-import type { ChartBarGroup, ChartSeries } from '~/utils/viz'
+import type { SeriesPoint } from '#shared/types'
+import type { ChartSeries } from '~/utils/viz'
 
 const { rangeQuery, bucket, preset } = useDashboardQuery()
 const { colorFor } = useDeviceColors()
@@ -15,9 +15,8 @@ const { data: toolVolume } = useBreakdown(rangeQuery, 'toolName')
 const { data: tokenSplit } = useBreakdown(rangeQuery, 'tokenType')
 const { data: apiErrors } = useBreakdown(rangeQuery, 'errorStatus')
 
-const BREAKDOWN_LIMIT = 8
-const LIVE_TOKEN_KEYS = ['input', 'output']
-const CACHE_TOKEN_KEYS = ['cacheRead', 'cacheCreation']
+// Five named machines and one "others" band: past that, colour stops telling machines apart.
+const STACKED_MACHINES = 5
 
 // A missing devices API leaves the roster empty without meaning there are no
 // machines, so it renders the dashboard degraded rather than the empty state.
@@ -34,50 +33,42 @@ function toSeries(points: SeriesPoint[] | null): ChartSeries[] {
     }
   }
 
-  return [...grouped.entries()]
-    .map(([deviceId, devicePoints]) => ({
-      key: deviceId,
-      label: devicePoints[0]!.device,
-      color: colorFor(deviceId),
-      points: devicePoints
-        .map(point => ({ x: Date.parse(point.bucket), y: point.value }))
-        .sort((a, b) => a.x - b.x)
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label))
+  return [...grouped.entries()].map(([deviceId, devicePoints]) => ({
+    key: deviceId,
+    label: devicePoints[0]!.device,
+    color: colorFor(deviceId),
+    points: devicePoints
+      .map(point => ({ x: Date.parse(point.bucket), y: point.value }))
+      .sort((a, b) => a.x - b.x)
+  }))
 }
 
-function toGroups(rows: BreakdownRow[] | null, keep?: string[]): ChartBarGroup[] {
-  const grouped = new Map<string, BreakdownRow[]>()
-  for (const row of rows ?? []) {
-    if (keep && !keep.includes(row.key)) continue
-    const existing = grouped.get(row.key)
-    if (existing) {
-      existing.push(row)
-    } else {
-      grouped.set(row.key, [row])
-    }
-  }
+type TrendMetric = 'cost' | 'tokens'
+const trend = ref<TrendMetric>('cost')
+const TRENDS: Array<{ id: TrendMetric, label: string }> = [
+  { id: 'cost', label: 'Spend' },
+  { id: 'tokens', label: 'Tokens' }
+]
 
-  return [...grouped.entries()]
-    .map(([key, keyRows]) => ({
-      label: key,
-      total: keyRows.reduce((sum, row) => sum + row.value, 0),
-      bars: [...keyRows]
-        .sort((a, b) => a.device.localeCompare(b.device))
-        .map(row => ({ key: `${key}:${row.deviceId}`, label: row.device, value: row.value, color: colorFor(row.deviceId) }))
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, BREAKDOWN_LIMIT)
-    .map(({ label, bars }) => ({ label, bars }))
+const trendSeries = computed(() => topSeries(toSeries(trend.value === 'cost' ? costSeries.value : tokenSeries.value), STACKED_MACHINES))
+const trendFormat = computed(() => trend.value === 'cost' ? formatUsd : formatCompact)
+
+const TOKEN_TYPES: Record<string, string> = {
+  input: 'Input',
+  output: 'Output',
+  cacheRead: 'Cache reads',
+  cacheCreation: 'Cache writes'
 }
 
-const costChart = computed(() => toSeries(costSeries.value))
-const tokenChart = computed(() => toSeries(tokenSeries.value))
-const modelBars = computed(() => toGroups(costByModel.value))
-const toolBars = computed(() => toGroups(toolVolume.value))
-const liveTokenBars = computed(() => toGroups(tokenSplit.value, LIVE_TOKEN_KEYS))
-const cacheTokenBars = computed(() => toGroups(tokenSplit.value, CACHE_TOKEN_KEYS))
-const errorBars = computed(() => toGroups(apiErrors.value))
+const tools = computed(() => fleetTotals(toolVolume.value ?? []))
+const errors = computed(() => fleetTotals(apiErrors.value ?? []))
+const tokenMix = computed(() => fleetTotals(tokenSplit.value ?? []))
+
+const machinesNote = computed(() => {
+  const count = (summaries.value ?? []).length
+  if (count === 2) return 'Two machines in view, so they are set side by side. The bar in the middle leans toward whichever did more.'
+  return 'Sorted by spend. Every column sorts. The bar is each machine’s spend against the biggest spender.'
+})
 </script>
 
 <template>
@@ -87,125 +78,222 @@ const errorBars = computed(() => toGroups(apiErrors.value))
       :pending="devicesPending"
     />
 
-    <template v-else>
-      <DashboardNotices class="notices" />
+    <div
+      v-else
+      class="page"
+    >
+      <h1 class="sr-only">
+        Claude Code usage, {{ preset.label.toLowerCase() }}
+      </h1>
 
-      <DashboardFilters />
+      <DashboardFilters>
+        <DashboardNotices />
+      </DashboardFilters>
 
-      <section class="hero">
-        <h1 class="sr-only">
-          Machine comparison, {{ preset.label.toLowerCase() }}
-        </h1>
-        <DashboardComparison :summaries="summaries ?? []" />
-      </section>
-
-      <div class="panels">
-        <DashboardPanel eyebrow="Cost over time">
-          <ChartTimeSeries
-            :series="costChart"
-            :bucket="bucket"
-            :format="formatUsd"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel eyebrow="Tokens over time">
-          <ChartTimeSeries
-            :series="tokenChart"
-            :bucket="bucket"
-            :format="formatCompact"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel eyebrow="Cost by model">
-          <ChartBars
-            :groups="modelBars"
-            :format="formatUsd"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          eyebrow="Top models by cost"
-          note="Each machine's three biggest models, with their share of its spend."
-        >
-          <DashboardTopModels
-            :rows="costByModel ?? []"
-            :format="formatUsd"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          eyebrow="Top models by tokens"
-          note="Input plus output tokens. Cache tokens are left out; they track conversation length, not work done."
-        >
-          <DashboardTopModels
-            :rows="tokensByModel ?? []"
-            :format="formatCompact"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel eyebrow="Tool calls by tool">
-          <ChartBars
-            :groups="toolBars"
-            :format="formatCount"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          eyebrow="Live tokens"
-          note="What you sent and what came back. Priced per token."
-        >
-          <ChartBars
-            :groups="liveTokenBars"
-            :format="formatCompact"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          eyebrow="Cache tokens"
-          note="Context re-read and re-written between turns. Runs orders of magnitude larger, so it gets its own scale."
-        >
-          <ChartBars
-            :groups="cacheTokenBars"
-            :format="formatCompact"
-          />
-        </DashboardPanel>
-
-        <DashboardPanel eyebrow="API errors by status code">
-          <ChartBars
-            :groups="errorBars"
-            :format="formatCount"
-          />
-        </DashboardPanel>
-      </div>
+      <DashboardStats
+        :summaries="summaries ?? []"
+        :cost-points="costSeries ?? []"
+        :bucket="bucket"
+        :range-label="preset.label"
+        class="stats"
+      />
 
       <DashboardPanel
-        eyebrow="Every measure, every machine"
-        class="ledger"
+        title="Machines"
+        :note="machinesNote"
       >
-        <DashboardSummaryTable :summaries="summaries ?? []" />
+        <DashboardComparison
+          :summaries="summaries ?? []"
+          :cost-by-model="costByModel ?? []"
+        />
       </DashboardPanel>
-    </template>
+
+      <DashboardPanel
+        :title="trend === 'cost' ? 'Spend over time' : 'Tokens over time'"
+        :note="trend === 'cost'
+          ? `Stacked by machine, so the top edge is the fleet total per ${bucket}.`
+          : `Every token type, cache included, stacked by machine per ${bucket}.`"
+      >
+        <template #actions>
+          <div
+            class="viz-segmented"
+            role="group"
+            aria-label="Measure over time"
+          >
+            <button
+              v-for="option in TRENDS"
+              :key="option.id"
+              type="button"
+              class="viz-segment"
+              :aria-pressed="trend === option.id"
+              @click="trend = option.id"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </template>
+
+        <ChartTimeSeries
+          :series="trendSeries"
+          :bucket="bucket"
+          :format="trendFormat"
+          :height="260"
+          stacked
+        />
+      </DashboardPanel>
+
+      <DashboardPanel
+        title="Models"
+        note="Which models each machine leans on. The share is of that machine's own total."
+      >
+        <DashboardTopModels
+          :cost-rows="costByModel ?? []"
+          :token-rows="tokensByModel ?? []"
+        />
+      </DashboardPanel>
+
+      <section
+        class="work"
+        aria-labelledby="work-heading"
+      >
+        <h2
+          id="work-heading"
+          class="viz-heading"
+        >
+          Where the work went
+        </h2>
+        <p class="viz-note work-note">
+          Whole fleet. Select a row to see which machines it came from.
+        </p>
+
+        <div class="work-grid">
+          <div>
+            <h3 class="sub">
+              Tool calls
+            </h3>
+            <ChartBars
+              :items="tools"
+              :format="formatCount"
+              :limit="6"
+            />
+          </div>
+          <div>
+            <h3 class="sub">
+              Tokens by type
+            </h3>
+            <ChartBars
+              :items="tokenMix"
+              :format="formatCompact"
+              :label-of="key => TOKEN_TYPES[key] ?? key"
+              color="var(--viz-ink-secondary)"
+            />
+          </div>
+          <div>
+            <h3 class="sub">
+              API errors by status
+            </h3>
+            <ChartBars
+              :items="errors"
+              :format="formatCount"
+              :limit="5"
+              color="var(--viz-status-serious)"
+            />
+          </div>
+        </div>
+      </section>
+
+      <details class="ledger">
+        <summary class="ledger-summary viz-focus">
+          <span class="viz-heading">Every measure, every machine</span>
+          <span class="viz-note">Latency percentiles, failures and the rest</span>
+        </summary>
+        <DashboardSummaryTable
+          :summaries="summaries ?? []"
+          class="ledger-table"
+        />
+      </details>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.notices {
-  margin-bottom: 24px;
-}
-
-.hero {
-  padding: 36px 0 48px;
-}
-
-.panels {
+.page {
   display: grid;
-  gap: 40px 44px;
-  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
-  padding-top: 40px;
-  border-top: 1px solid var(--viz-baseline);
+  gap: var(--space-xl);
+  padding-top: var(--space-xs);
 }
 
+/* The toolbar and the hero belong together; everything after them is a new section. */
+.stats {
+  margin-top: calc(var(--space-xl) * -1 + var(--space-md));
+}
+
+.page > :deep(.panel),
+.work,
 .ledger {
-  margin-top: 48px;
+  padding-top: var(--space-lg);
+  border-top: var(--rule);
+}
+
+.work-note {
+  margin: var(--space-3xs) 0 var(--space-md);
+}
+
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-xl);
+}
+
+.sub {
+  margin-bottom: var(--space-xs);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--viz-ink-secondary);
+}
+
+.ledger-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3xs) var(--space-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ledger-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ledger-summary::before {
+  content: "+";
+  width: 1ch;
+  font-family: var(--font-figure);
+  color: var(--viz-muted);
+}
+
+.ledger[open] .ledger-summary::before {
+  content: "\2212";
+}
+
+.ledger-table {
+  margin-top: var(--space-md);
+}
+
+@media (width < 900px) {
+  .work-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+}
+
+@media (width < 560px) {
+  .page {
+    gap: var(--space-xl);
+  }
+
+  .stats {
+    margin-top: calc(var(--space-xl) * -1 + var(--space-md));
+  }
 }
 </style>
