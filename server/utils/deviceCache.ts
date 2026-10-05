@@ -25,12 +25,29 @@ const STALE_TTL_SECONDS = 60
 
 const key = (tokenHash: string) => `device:${tokenHash}`
 
+// A second layer in the instance's own memory. Every machine posts at least once a minute and
+// Vercel's Fluid compute keeps a warm instance serving many requests, so most lookups never
+// reach Redis -- which halves the commands an ingest request costs against Upstash's monthly
+// quota. The price is that a revoke or rotate made on another instance takes up to this long to
+// reach this one; on the instance that made it, the entry is dropped at once.
+const LOCAL_TTL_MS = 30_000
+const LOCAL_MAX = 1000
+const local = new Map<string, { device: CachedDevice | null, expires: number }>()
+
+function remember(tokenHash: string, device: CachedDevice | null) {
+  if (local.size >= LOCAL_MAX) local.clear()
+  local.set(tokenHash, { device, expires: Date.now() + LOCAL_TTL_MS })
+}
+
 export async function cachedDevice(
   tokenHash: string,
   load: () => Promise<CachedDevice | null>
 ): Promise<CachedDevice | null> {
   const store = redis()
   if (!store) return await load()
+
+  const known = local.get(tokenHash)
+  if (known && known.expires > Date.now()) return known.device
 
   let hit: string | null
   try {
@@ -40,9 +57,17 @@ export async function cachedDevice(
     console.error('[device-cache] Redis unavailable, reading the device from Postgres', error)
     return await load()
   }
+  // A device mid-change is never held locally, so the change reaches this instance next request.
   if (hit === STALE) return await load()
-  if (hit === MISSING) return null
-  if (hit) return JSON.parse(hit) as CachedDevice
+  if (hit === MISSING) {
+    remember(tokenHash, null)
+    return null
+  }
+  if (hit) {
+    const device = JSON.parse(hit) as CachedDevice
+    remember(tokenHash, device)
+    return device
+  }
 
   const device = await load()
   try {
@@ -50,6 +75,7 @@ export async function cachedDevice(
       nx: true,
       ex: device ? DEVICE_TTL_SECONDS : MISSING_TTL_SECONDS
     })
+    remember(tokenHash, device)
   } catch (error) {
     console.error('[device-cache] Redis unavailable, device not cached', error)
   }
@@ -67,12 +93,17 @@ return 0`
 
 /** Rewrites a cached device without a round trip to Postgres. A no-op if the entry has moved on. */
 export async function updateCachedDevice(tokenHash: string, previous: CachedDevice, next: CachedDevice): Promise<void> {
+  // The local copy takes the new value but keeps its expiry, so an update can never stretch
+  // how long this instance might go on trusting an entry another instance has since revoked.
+  const known = local.get(tokenHash)
+  if (known) known.device = next
   await redis()?.eval(SWAP, [key(tokenHash)], [JSON.stringify(previous), JSON.stringify(next)])
 }
 
 // Deliberately not caught: if Redis cannot take the stale marker, the old entry would outlive a
 // revoke once Redis is back, so the revoke has to fail loudly and be retried.
 export async function forgetDevice(tokenHash: string | null | undefined): Promise<void> {
+  if (tokenHash) local.delete(tokenHash)
   const store = redis()
   if (store && tokenHash) await store.set(key(tokenHash), STALE, { ex: STALE_TTL_SECONDS })
 }
