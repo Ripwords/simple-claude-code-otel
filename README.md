@@ -254,8 +254,10 @@ and sleeps otherwise. The dashboard is never stale, because opening it drains
 the queue first.
 
 Every ingest write is idempotent, so a flush that dies halfway is simply resumed.
-A batch the database refuses on its data, such as one from a machine deleted while
-its batch waited in the queue, is dropped and logged rather than blocking the queue.
+A batch the database refuses on its data or schema, such as one from a machine
+deleted while its batch waited, moves to an `ingest:dead` list in Redis (the last
+1,000 are kept) rather than blocking the queue. Only one flush runs at a time, and a
+flush that stalls past its lock stops before it can touch a newer flush's work.
 
 Machines send logs once a minute (`OTEL_LOGS_EXPORT_INTERVAL=60000`) rather than
 Claude Code's default of every five seconds. That keeps a handful of busy machines

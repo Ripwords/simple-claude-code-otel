@@ -1,4 +1,4 @@
-import type { H3Event } from 'h3'
+import { waitUntil } from '@vercel/functions'
 import type { Statement } from './otlp'
 import { db } from './db'
 import { enqueue, flush, redis } from './buffer'
@@ -34,14 +34,16 @@ export async function runIngest(statements: Statement[], result: IngestResult): 
  * after the response so the exporter is not kept waiting on Postgres. Without Redis it
  * writes straight through, which is what local development and a fresh deploy get.
  */
-export async function ingest(event: H3Event, statements: Statement[], result: IngestResult): Promise<IngestResult> {
+export async function ingest(statements: Statement[], result: IngestResult): Promise<IngestResult> {
   const store = redis()
   if (!store || statements.length === 0) return await runIngest(statements, result)
 
   if (await enqueue(store, statements)) {
     const flushing = flush().catch(error => console.error('[ingest] flush failed; the queue is kept for the next one', error))
-    if (typeof event.waitUntil === 'function') event.waitUntil(flushing)
-    else await flushing
+    // Nitro's event.waitUntil only forwards to a platform hook its Vercel Node runtime never
+    // installs, so on Vercel it would let the instance freeze mid-flush. This one reaches
+    // Vercel's request context directly, and off Vercel the promise simply runs on.
+    waitUntil(flushing)
   }
   return result
 }

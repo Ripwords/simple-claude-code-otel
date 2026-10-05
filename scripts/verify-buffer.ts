@@ -18,6 +18,7 @@
  * Run with: bun --env-file=test/e2e/stack.env scripts/verify-buffer.ts  (with `bun run e2e:dev` up)
  */
 import { spawn, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { neon } from '@neondatabase/serverless'
 import { Redis } from '@upstash/redis'
@@ -39,6 +40,8 @@ const redis = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL!, token: proce
 
 const LOGS = JSON.parse(readFileSync('test/fixtures/logs.json', 'utf8'))
 const METRICS = JSON.parse(readFileSync('test/fixtures/metrics.json', 'utf8'))
+const ownerEmail = /"user\.email",\s*"value":\s*\{\s*"stringValue":\s*"([^"]+)"/.exec(readFileSync('test/fixtures/metrics.json', 'utf8'))![1]!
+const ownerUuid = /"user\.account_uuid",\s*"value":\s*\{\s*"stringValue":\s*"([^"]+)"/.exec(readFileSync('test/fixtures/metrics.json', 'utf8'))![1]!
 
 const report: { ranAt: string, checks: Array<{ label: string, pass: boolean, detail?: unknown }> } = { ranAt: new Date().toISOString(), checks: [] }
 const check = (label: string, pass: boolean, detail?: unknown) => {
@@ -154,6 +157,7 @@ const deleted = await call('DELETE', `/api/devices/${doomed.id}`)
 check('5. a machine with parked batches can be deleted', deleted.status === 200, { status: deleted.status })
 await call('GET', '/api/stats/summary')
 check('5. its batches are dropped, not left blocking the queue', await queued() === 0, { queued: await queued() })
+check('5. ...and kept on the dead-letter list, not lost', Number(await redis.llen('ingest:dead')) === 2, { dead: Number(await redis.llen('ingest:dead')) })
 check('5. the batches beside them still land', await factRows(survivor.id) === expectedSurvivor, { rows: await factRows(survivor.id), expectedSurvivor })
 
 // --- 6. revocation and rotation --------------------------------------------------------------
@@ -161,6 +165,14 @@ await call('POST', '/api/otlp/v1/metrics', METRICS, a.token) // warm the cache
 const revoked = await call('POST', `/api/devices/${a.id}/revoke`)
 const afterRevoke = await call('POST', '/api/otlp/v1/metrics', METRICS, a.token)
 check('6. a revoked token is refused at once', revoked.status === 200 && afterRevoke.status === 401, { revoke: revoked.status, ingest: afterRevoke.status })
+
+// The race: a request that read the device just before the revoke writes its stale answer back
+// afterwards, the way a cache fill does. It must not resurrect the token.
+const staleFill = await redis.set(`device:${createHash('sha256').update(a.token).digest('hex')}`,
+  JSON.stringify({ id: a.id, name: 'e2e-a', accountUuid: null, refusedAccountUuid: null }), { nx: true, ex: 3600 })
+const afterRace = await call('POST', '/api/otlp/v1/metrics', METRICS, a.token)
+check('6. a stale cache fill racing a revoke cannot revive the token', staleFill === null && afterRace.status === 401,
+  { staleFillAccepted: staleFill !== null, ingest: afterRace.status })
 
 await call('POST', '/api/otlp/v1/metrics', METRICS, b.token) // warm the cache
 const rotated = await call('POST', `/api/devices/${b.id}/rotate`)
@@ -186,6 +198,29 @@ for (let i = 0; i < 20 && landed < expectedF; i++) {
 }
 check('7. ingest flushes by itself once the last flush is old', landed === expectedF, { landed, expectedF })
 check('7. ...and marks the flush so the next requests do not repeat it', Number(await redis.exists('ingest:flushed-recently')) === 1)
+
+// --- 8. refusals ------------------------------------------------------------------------------
+// A machine signed into another account keeps posting every minute. Recording each refusal
+// must not wake Postgres, and the owner's return must clear it in order with the record.
+// A different email too: an address that already owns a machine is allowed in as a guest.
+const stranger = JSON.parse(JSON.stringify(METRICS)
+  .replaceAll(ownerUuid, '00000000-0000-4000-8000-0000000000aa')
+  .replaceAll(ownerEmail, 'stranger@example.com'))
+await markFlushedRecently()
+const r = await newDevice('e2e-refusing')
+await postFixtures(r.token) // claims the fixture's account
+await call('GET', '/api/devices') // drain, so what follows is the only thing queued
+const refusedCount = async () => Number((await sql.query('select rejected_count from telemetry.device where id = $1', [r.id]))[0]!.rejected_count)
+const refusedOnce = await call('POST', '/api/otlp/v1/metrics', stranger, r.token)
+const refusedTwice = await call('POST', '/api/otlp/v1/metrics', stranger, r.token)
+check('8. another account is refused', refusedOnce.status === 403 && refusedTwice.status === 403, { first: refusedOnce.status, second: refusedTwice.status })
+check('8. ...without a write to Postgres per attempt', await refusedCount() === 0 && await queued() === 2, { rejectedCount: await refusedCount(), queued: await queued() })
+const listed = await call('GET', '/api/devices')
+const conflict = (listed.json as unknown as Array<{ id: string, conflict: { count: number } | null }>).find(d => d.id === r.id)?.conflict
+check('8. the machines page still shows the refusal, counted', conflict?.count === 2, { conflict })
+const back = await call('POST', '/api/otlp/v1/metrics', METRICS, r.token)
+await call('GET', '/api/devices')
+check('8. the owner reporting again clears it, in order', back.status === 200 && await refusedCount() === 0, { status: back.status, rejectedCount: await refusedCount() })
 
 mkdirSync('test/e2e/artifacts', { recursive: true })
 writeFileSync('test/e2e/artifacts/buffer-report.json', JSON.stringify(report, null, 2))

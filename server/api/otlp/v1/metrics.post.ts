@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     ...buildDeviceLivenessUpdate(device.id, result.seenAt)
   ]
 
-  return await ingest(event, statements, {
+  return await ingest(statements, {
     accepted: result.rows.length + result.dropped,
     stored: result.rows.length,
     dropped: result.dropped

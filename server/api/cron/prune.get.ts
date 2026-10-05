@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
 
   const summary = {
     bufferedBatches: buffered.flushed,
-    droppedBatches: buffered.dropped,
+    deadLetteredBatches: buffered.dropped,
     rolledUpDays: days.length,
     metricPoints,
     events,

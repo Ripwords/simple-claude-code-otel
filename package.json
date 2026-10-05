@@ -28,6 +28,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@nuxt/ui": "^4.11.0",
     "@upstash/redis": "^1.39.0",
+    "@vercel/functions": "^3.9.11",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
