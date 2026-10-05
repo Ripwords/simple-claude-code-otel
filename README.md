@@ -149,6 +149,7 @@ The script only writes this:
 
 ## A machine reports for one account only
 
+    "OTEL_LOGS_EXPORT_INTERVAL": "60000",
 Telemetry lives in `~/.claude/settings.json`, which belongs to the machine rather
 than to a Claude Code account. So signing out and signing into a different account
 on that laptop would otherwise keep it reporting, and the second account's spend

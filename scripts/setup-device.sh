@@ -44,6 +44,10 @@ mkdir -p "$(dirname "$SETTINGS")"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 cp "$SETTINGS" "$SETTINGS.bak"
 
+# Logs go out once a minute like metrics, not every five seconds. Each request is a Redis
+# command on the server, and the free Upstash plan has a monthly cap that five-second
+# exports from a few busy machines would exceed.
+#
 # The merge needs a JSON parser, and the machine being set up has whichever it
 # happens to have. Any one of these three is enough, so none of them is a
 # prerequisite the way jq alone once was.
@@ -53,6 +57,7 @@ merge_with_jq() {
       "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
       "OTEL_METRICS_EXPORTER": "otlp",
       "OTEL_LOGS_EXPORTER": "otlp",
+      "OTEL_LOGS_EXPORT_INTERVAL": "60000",
       "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
       "OTEL_EXPORTER_OTLP_ENDPOINT": $endpoint,
       "OTEL_EXPORTER_OTLP_HEADERS": ("Authorization=Bearer " + $token)
@@ -71,6 +76,7 @@ settings.env = Object.assign({}, settings.env, {
   CLAUDE_CODE_ENABLE_TELEMETRY: "1",
   OTEL_METRICS_EXPORTER: "otlp",
   OTEL_LOGS_EXPORTER: "otlp",
+  OTEL_LOGS_EXPORT_INTERVAL: "60000",
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
   OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
   OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer " + token
@@ -87,6 +93,7 @@ settings.setdefault("env", {}).update({
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
     "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORT_INTERVAL": "60000",
     "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
     "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
     "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer " + token,
