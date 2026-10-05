@@ -71,11 +71,14 @@ export async function cachedDevice(
 
   const device = await load()
   try {
-    await store.set(key(tokenHash), device ? JSON.stringify(device) : MISSING, {
+    const filled = await store.set(key(tokenHash), device ? JSON.stringify(device) : MISSING, {
       nx: true,
       ex: device ? DEVICE_TTL_SECONDS : MISSING_TTL_SECONDS
     })
-    remember(tokenHash, device)
+    // Only a fill that won the slot is held locally. A lost NX means something got there first --
+    // possibly the stale marker of a revoke that landed while this lookup was reading Postgres --
+    // and holding this answer would revive the revoked token here for the local TTL.
+    if (filled !== null) remember(tokenHash, device)
   } catch (error) {
     console.error('[device-cache] Redis unavailable, device not cached', error)
   }
