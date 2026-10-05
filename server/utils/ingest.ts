@@ -31,14 +31,23 @@ export async function runIngest(statements: Statement[], result: IngestResult): 
 
 /**
  * Parks the batch in Redis when one is configured and kicks off a flush once one is due,
- * after the response so the exporter is not kept waiting on Postgres. Without Redis it
- * writes straight through, which is what local development and a fresh deploy get.
+ * after the response so the exporter is not kept waiting on Postgres. Without Redis, or when
+ * Redis refuses, it writes straight through.
  */
 export async function ingest(statements: Statement[], result: IngestResult): Promise<IngestResult> {
   const store = redis()
   if (!store || statements.length === 0) return await runIngest(statements, result)
 
-  if (await enqueue(store, statements)) {
+  let due: boolean
+  try {
+    due = await enqueue(store, statements)
+  } catch (error) {
+    // Redis down or over its monthly quota. Writing straight through wakes the database, but
+    // refusing would make the exporter retry and then drop the batch: data lost for a quota.
+    console.error('[ingest] Redis unavailable, writing straight to Postgres', error)
+    return await runIngest(statements, result)
+  }
+  if (due) {
     const flushing = flush().catch(error => console.error('[ingest] flush failed; the queue is kept for the next one', error))
     // Nitro's event.waitUntil only forwards to a platform hook its Vercel Node runtime never
     // installs, so on Vercel it would let the instance freeze mid-flush. This one reaches

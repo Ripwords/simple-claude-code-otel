@@ -32,16 +32,27 @@ export async function cachedDevice(
   const store = redis()
   if (!store) return await load()
 
-  const hit = await store.get<string>(key(tokenHash))
+  let hit: string | null
+  try {
+    hit = await store.get<string>(key(tokenHash))
+  } catch (error) {
+    // Redis down or over quota: Postgres still knows the answer, so the request goes on.
+    console.error('[device-cache] Redis unavailable, reading the device from Postgres', error)
+    return await load()
+  }
   if (hit === STALE) return await load()
   if (hit === MISSING) return null
   if (hit) return JSON.parse(hit) as CachedDevice
 
   const device = await load()
-  await store.set(key(tokenHash), device ? JSON.stringify(device) : MISSING, {
-    nx: true,
-    ex: device ? DEVICE_TTL_SECONDS : MISSING_TTL_SECONDS
-  })
+  try {
+    await store.set(key(tokenHash), device ? JSON.stringify(device) : MISSING, {
+      nx: true,
+      ex: device ? DEVICE_TTL_SECONDS : MISSING_TTL_SECONDS
+    })
+  } catch (error) {
+    console.error('[device-cache] Redis unavailable, device not cached', error)
+  }
   return device
 }
 
@@ -59,6 +70,8 @@ export async function updateCachedDevice(tokenHash: string, previous: CachedDevi
   await redis()?.eval(SWAP, [key(tokenHash)], [JSON.stringify(previous), JSON.stringify(next)])
 }
 
+// Deliberately not caught: if Redis cannot take the stale marker, the old entry would outlive a
+// revoke once Redis is back, so the revoke has to fail loudly and be retried.
 export async function forgetDevice(tokenHash: string | null | undefined): Promise<void> {
   const store = redis()
   if (store && tokenHash) await store.set(key(tokenHash), STALE, { ex: STALE_TTL_SECONDS })

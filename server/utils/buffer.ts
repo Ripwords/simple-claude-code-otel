@@ -61,7 +61,14 @@ export function redis(): Redis | null {
   if (client === undefined) {
     const { redisUrl, redisToken } = useRuntimeConfig()
     client = redisUrl && redisToken
-      ? new Redis({ url: String(redisUrl), token: String(redisToken), automaticDeserialization: false })
+      ? new Redis({
+          url: String(redisUrl),
+          token: String(redisToken),
+          automaticDeserialization: false,
+          // The client's default retries back off for seconds. Every caller here has a Postgres
+          // fallback, so one quick retry and then the fallback beats stalling each request.
+          retry: { retries: 1, backoff: () => 100 }
+        })
       : null
   }
   return client

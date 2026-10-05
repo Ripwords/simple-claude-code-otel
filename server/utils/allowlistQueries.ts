@@ -68,7 +68,7 @@ export async function isEmailAllowed(email: string | null): Promise<boolean> {
   const normalized = normalizeEmail(email)
   const store = redis()
 
-  const hit = store ? await store.get<string>(allowedKey(normalized)) : null
+  const hit = store ? await store.get<string>(allowedKey(normalized)).catch(() => null) : null
   if (hit !== null) return hit === '1'
 
   const rows = await db().query(
@@ -80,7 +80,7 @@ export async function isEmailAllowed(email: string | null): Promise<boolean> {
     [normalized]
   )
   const allowed = rows[0]?.allowed === true
-  await store?.set(allowedKey(normalized), allowed ? '1' : '0', { ex: ALLOWED_TTL_SECONDS })
+  await store?.set(allowedKey(normalized), allowed ? '1' : '0', { ex: ALLOWED_TTL_SECONDS }).catch(() => null)
   return allowed
 }
 

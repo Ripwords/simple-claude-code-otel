@@ -106,7 +106,9 @@ export async function enforceDeviceAccount(device: AuthenticatedDevice, batch: B
       'update telemetry.device set account_uuid = $2, account_email = $3 where id = $1::uuid and account_uuid is null returning account_uuid',
       [device.id, decision.account.uuid, decision.account.email]
     )
-    await forgetDevice(device.tokenHash)
+    // Safe to lose if Redis is down: an entry still showing no account just sends the next
+    // batch back through this claim, which finds the stored account and decides from that.
+    await forgetDevice(device.tokenHash).catch(error => console.error('[device-token] could not mark the device stale after a claim', error))
     if (won[0]) return
 
     // Zero rows means a concurrent first batch won the claim, so the stored value decides.
@@ -165,7 +167,13 @@ async function writeRefusal(device: AuthenticatedDevice, statement: Statement, r
     await db().query(statement.text, statement.params)
     return
   }
-  await enqueue(store, [statement])
+  try {
+    await enqueue(store, [statement])
+  } catch (error) {
+    console.error('[device-token] Redis unavailable, recording the refusal in Postgres', error)
+    await db().query(statement.text, statement.params)
+    return
+  }
   const { tokenHash, ...cached } = device
   await updateCachedDevice(tokenHash, cached, { ...cached, refusedAccountUuid })
 }
