@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { freshFixture } from './freshFixture.mjs'
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3000'
 const PW = process.env.DASHBOARD_PASSWORD
@@ -50,8 +50,8 @@ ok('duplicate name rejected with 409', dup.status === 409, `got ${dup.status}`)
 const listed = await call('GET', '/api/devices')
 ok('token never appears again', !JSON.stringify(listed.json).includes(token))
 
-const metrics = JSON.parse(readFileSync('test/fixtures/metrics.json', 'utf8'))
-const logs = JSON.parse(readFileSync('test/fixtures/logs.json', 'utf8'))
+const metrics = freshFixture('test/fixtures/metrics.json')
+const logs = freshFixture('test/fixtures/logs.json')
 const mIn = await call('POST', '/api/otlp/v1/metrics', metrics, token)
 const lIn = await call('POST', '/api/otlp/v1/logs', logs, token)
 ok('ingest accepted with the minted token', mIn.status === 200 && lIn.status === 200, `metrics=${mIn.json?.accepted} logs=${lIn.json?.accepted}`)

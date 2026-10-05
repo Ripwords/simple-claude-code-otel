@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { freshFixture } from './freshFixture.mjs'
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3000'
 const PW = process.env.DASHBOARD_PASSWORD
@@ -53,7 +53,7 @@ for (const d of (await call('GET', '/api/devices')).json ?? []) await call('DELE
 
 const summary = async () => (await call('GET', `/api/stats/summary?from=${new Date(Date.now() - 30 * 864e5).toISOString()}&to=${new Date(Date.now() + 864e5).toISOString()}`)).json[0]
 
-const metrics = JSON.parse(readFileSync('test/fixtures/metrics.json', 'utf8'))
+const metrics = freshFixture('test/fixtures/metrics.json')
 const impostorEmail = 'someone.else@example.com'
 const impostor = rewriteAccount(metrics, '00000000-dead-4000-8000-000000000000', impostorEmail)
 
